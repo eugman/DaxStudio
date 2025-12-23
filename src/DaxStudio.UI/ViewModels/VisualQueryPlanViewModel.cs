@@ -28,7 +28,6 @@ namespace DaxStudio.UI.ViewModels
     /// ViewModel for the Visual Query Plan trace window.
     /// Displays DAX query plans as an interactive graph visualization.
     /// </summary>
-    [Export(typeof(ITraceWatcher)), PartCreationPolicy(CreationPolicy.NonShared)]
     public class VisualQueryPlanViewModel : TraceWatcherBaseViewModel,
         ISaveState,
         ITraceDiagnostics,
@@ -60,6 +59,7 @@ namespace DaxStudio.UI.ViewModels
             IPlanEnrichmentService enrichmentService)
             : base(eventAggregator, globalOptions, windowManager)
         {
+            Log.Information("{class} {method} {message}", nameof(VisualQueryPlanViewModel), "ctor", "Visual Query Plan ViewModel created");
             _enrichmentService = enrichmentService ?? throw new ArgumentNullException(nameof(enrichmentService));
             Issues = new BindableCollection<IssueViewModel>();
         }
@@ -650,9 +650,11 @@ namespace DaxStudio.UI.ViewModels
         {
             if (RootNode == null) return;
 
-            // Simple top-down tree layout
-            const double horizontalSpacing = 200;
-            const double verticalSpacing = 80;
+            // Simple top-down tree layout with padding
+            const double horizontalSpacing = 50;
+            const double verticalSpacing = 100;
+            const double paddingLeft = 30;
+            const double paddingTop = 30;
 
             var levelWidths = new Dictionary<int, double>();
             var levelCounts = new Dictionary<int, int>();
@@ -660,8 +662,8 @@ namespace DaxStudio.UI.ViewModels
             // Calculate level widths
             CalculateLevelInfo(RootNode, 0, levelWidths, levelCounts);
 
-            // Position nodes
-            PositionNodes(RootNode, 0, 0, horizontalSpacing, verticalSpacing, levelCounts);
+            // Position nodes with initial padding
+            PositionNodes(RootNode, 0, paddingLeft, horizontalSpacing, verticalSpacing, levelCounts, paddingTop);
         }
 
         private void CalculateLevelInfo(PlanNodeViewModel node, int level,
@@ -683,9 +685,9 @@ namespace DaxStudio.UI.ViewModels
         }
 
         private double PositionNodes(PlanNodeViewModel node, int level, double xOffset,
-            double horizontalSpacing, double verticalSpacing, Dictionary<int, int> levelCounts)
+            double horizontalSpacing, double verticalSpacing, Dictionary<int, int> levelCounts, double paddingTop = 0)
         {
-            double y = level * (node.Height + verticalSpacing);
+            double y = paddingTop + level * (node.Height + verticalSpacing);
 
             if (node.Children.Count == 0)
             {
@@ -696,7 +698,7 @@ namespace DaxStudio.UI.ViewModels
             double childOffset = xOffset;
             foreach (var child in node.Children)
             {
-                childOffset = PositionNodes(child, level + 1, childOffset, horizontalSpacing, verticalSpacing, levelCounts);
+                childOffset = PositionNodes(child, level + 1, childOffset, horizontalSpacing, verticalSpacing, levelCounts, paddingTop);
             }
 
             // Center parent over children

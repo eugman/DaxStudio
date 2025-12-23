@@ -19,6 +19,7 @@
                 <ResourceDictionary Source="pack://application:,,,/DaxStudio.UI;Component/Resources/Styles/TraceWatcherStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <conv:BoolToHiddenConverter x:Key="BoolToVisibilityConverter" />
+            <conv:BoolToHiddenConverter x:Key="BoolToHiddenConverter" />
             <conv:BoolToCollapsedConverter x:Key="BoolToCollapsedConverter" />
             <conv:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
 
@@ -245,12 +246,19 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Line X1="{Binding Parent.X}"
-                                                      Y1="{Binding Parent.Y}"
-                                                      X2="{Binding X}"
-                                                      Y2="{Binding Y}"
-                                                      Stroke="{DynamicResource Theme.Brush.Control.Border}"
-                                                      StrokeThickness="1.5"/>
+                                                <Path Stroke="{DynamicResource Theme.Brush.Control.Border}"
+                                                      StrokeThickness="1.5"
+                                                      Fill="Transparent">
+                                                    <Path.Data>
+                                                        <PathGeometry>
+                                                            <PathFigure StartPoint="{Binding Parent.EdgeBottom}">
+                                                                <BezierSegment Point1="{Binding Parent.EdgeBottomControl}"
+                                                                               Point2="{Binding EdgeTopControl}"
+                                                                               Point3="{Binding EdgeTop}"/>
+                                                            </PathFigure>
+                                                        </PathGeometry>
+                                                    </Path.Data>
+                                                </Path>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>

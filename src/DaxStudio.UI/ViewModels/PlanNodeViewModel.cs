@@ -265,6 +265,12 @@ namespace DaxStudio.UI.ViewModels
                     NotifyOfPropertyChange();
                     NotifyOfPropertyChange(nameof(X));
                     NotifyOfPropertyChange(nameof(Y));
+                    NotifyOfPropertyChange(nameof(CenterX));
+                    NotifyOfPropertyChange(nameof(CenterY));
+                    NotifyOfPropertyChange(nameof(EdgeTop));
+                    NotifyOfPropertyChange(nameof(EdgeBottom));
+                    NotifyOfPropertyChange(nameof(EdgeTopControl));
+                    NotifyOfPropertyChange(nameof(EdgeBottomControl));
                 }
             }
         }
@@ -278,6 +284,36 @@ namespace DaxStudio.UI.ViewModels
         /// Y coordinate in the graph.
         /// </summary>
         public double Y => _position.Y;
+
+        /// <summary>
+        /// Center X coordinate of the node.
+        /// </summary>
+        public double CenterX => _position.X + Width / 2;
+
+        /// <summary>
+        /// Center Y coordinate of the node.
+        /// </summary>
+        public double CenterY => _position.Y + Height / 2;
+
+        /// <summary>
+        /// Top center point for edge connections (incoming from parent).
+        /// </summary>
+        public Point EdgeTop => new Point(CenterX, Y);
+
+        /// <summary>
+        /// Bottom center point for edge connections (outgoing to children).
+        /// </summary>
+        public Point EdgeBottom => new Point(CenterX, Y + Height);
+
+        /// <summary>
+        /// Control point for bezier curve from top edge.
+        /// </summary>
+        public Point EdgeTopControl => new Point(CenterX, Y - 30);
+
+        /// <summary>
+        /// Control point for bezier curve from bottom edge.
+        /// </summary>
+        public Point EdgeBottomControl => new Point(CenterX, Y + Height + 30);
 
         /// <summary>
         /// Width of the node for rendering.
