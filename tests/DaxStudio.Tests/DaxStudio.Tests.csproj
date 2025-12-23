@@ -139,6 +139,9 @@
     <Compile Include="XlsxHelperTests.cs" />
     <Compile Include="xmSqlProcessing.cs" />
     <Compile Include="_TestConfig.cs" />
+    <Compile Include="VisualQueryPlan\ColumnNameResolverTests.cs" />
+    <Compile Include="VisualQueryPlan\PerformanceIssueDetectorTests.cs" />
+    <Compile Include="VisualQueryPlan\PlanEnrichmentServiceTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ADOTabular\DaxStudio.ADOTabular.csproj">
