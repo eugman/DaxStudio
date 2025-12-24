@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Packaging;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -42,6 +43,7 @@ namespace DaxStudio.UI.ViewModels
         private string _logicalQueryPlanText;
         private bool _showPhysicalPlan = true;
         private double _zoomLevel = 1.0;
+        private int _selectedTabIndex = 0;
 
         [ImportingConstructor]
         public VisualQueryPlanViewModel(
@@ -113,6 +115,22 @@ namespace DaxStudio.UI.ViewModels
         /// Whether a node is currently selected.
         /// </summary>
         public bool HasSelectedNode => _selectedNode != null;
+
+        /// <summary>
+        /// Index of the selected tab in the right panel (0=Node Details, 1=Issues).
+        /// </summary>
+        public int SelectedTabIndex
+        {
+            get => _selectedTabIndex;
+            set
+            {
+                if (_selectedTabIndex != value)
+                {
+                    _selectedTabIndex = value;
+                    NotifyOfPropertyChange();
+                }
+            }
+        }
 
         /// <summary>
         /// Detected performance issues wrapped for UI display.
@@ -289,7 +307,8 @@ namespace DaxStudio.UI.ViewModels
             {
                 DaxStudioTraceEventClass.DAXQueryPlan,
                 DaxStudioTraceEventClass.QueryBegin,
-                DaxStudioTraceEventClass.QueryEnd
+                DaxStudioTraceEventClass.QueryEnd,
+                DaxStudioTraceEventClass.VertiPaqSEQueryEnd  // For timing correlation
             };
         }
 
@@ -301,9 +320,13 @@ namespace DaxStudio.UI.ViewModels
 
         protected override async void ProcessResults()
         {
+            // DEBUG: Log entry point - REMOVE BEFORE RELEASE
+            System.Diagnostics.Debug.WriteLine($">>> VisualQueryPlan.ProcessResults() ENTRY - Events.Count={Events.Count}");
+
             if (HasPlanData)
             {
                 // Results have not been cleared, probably from another action
+                System.Diagnostics.Debug.WriteLine(">>> VisualQueryPlan: Already has data, skipping");
                 return;
             }
 
@@ -311,9 +334,15 @@ namespace DaxStudio.UI.ViewModels
             var logicalPlanRows = new List<LogicalQueryPlanRow>();
             var timingEvents = new List<TraceStorageEngineEvent>();
 
+            int eventCount = 0;
             while (!Events.IsEmpty)
             {
                 Events.TryDequeue(out var traceEvent);
+                eventCount++;
+
+                // DEBUG: Log each event type - REMOVE BEFORE RELEASE
+                Log.Debug(">>> VisualQueryPlan: Processing event {Index} - Class={Class}, Subclass={Subclass}",
+                    eventCount, traceEvent.EventClass, traceEvent.EventSubclass);
 
                 if (traceEvent.EventClass == DaxStudioTraceEventClass.DAXQueryPlan)
                 {
@@ -321,11 +350,13 @@ namespace DaxStudio.UI.ViewModels
                     {
                         PhysicalQueryPlanText = traceEvent.TextData;
                         physicalPlanRows.AddRange(ParsePhysicalPlan(traceEvent.TextData));
+                        Log.Debug(">>> VisualQueryPlan: Parsed {Count} physical plan rows", physicalPlanRows.Count);
                     }
                     else if (traceEvent.EventSubclass == DaxStudioTraceEventSubclass.DAXVertiPaqLogicalPlan)
                     {
                         LogicalQueryPlanText = traceEvent.TextData;
                         logicalPlanRows.AddRange(ParseLogicalPlan(traceEvent.TextData));
+                        Log.Debug(">>> VisualQueryPlan: Parsed {Count} logical plan rows", logicalPlanRows.Count);
                     }
                 }
                 else if (traceEvent.EventClass == DaxStudioTraceEventClass.QueryBegin)
@@ -339,8 +370,37 @@ namespace DaxStudio.UI.ViewModels
                     RequestID = traceEvent.RequestId;
                     CommandText = traceEvent.TextData;
                     TotalDuration = traceEvent.Duration;
+                    Log.Debug(">>> VisualQueryPlan: QueryEnd - TotalDuration={Duration}ms", TotalDuration);
+                }
+                else if (traceEvent.EventClass == DaxStudioTraceEventClass.VertiPaqSEQueryEnd)
+                {
+                    // Collect Storage Engine timing events for correlation with plan nodes
+                    var seEvent = new TraceStorageEngineEvent
+                    {
+                        Query = traceEvent.TextData,
+                        Duration = traceEvent.Duration,
+                        CpuTime = traceEvent.CpuTime,
+                        NetParallelDuration = traceEvent.NetParallelDuration,
+                        Subclass = traceEvent.EventSubclass,
+                        StartTime = traceEvent.StartTime,
+                        EndTime = traceEvent.EndTime,
+                        ObjectName = traceEvent.ObjectName  // Required for matching to plan nodes
+                    };
+
+                    // Extract estimated rows and size from xmSQL query text
+                    ExtractEstimatedSizeFromQuery(seEvent);
+
+                    // DEBUG: Log SE event details - REMOVE BEFORE RELEASE
+                    Log.Information(">>> VisualQueryPlan: SE Event #{Index} - ObjectName={ObjectName}, Duration={Duration}ms, CPU={Cpu}ms, NetParallel={NetParallel}ms, EstRows={EstRows}",
+                        timingEvents.Count + 1, seEvent.ObjectName, seEvent.Duration, seEvent.CpuTime, seEvent.NetParallelDuration, seEvent.EstimatedRows);
+
+                    timingEvents.Add(seEvent);
                 }
             }
+
+            // DEBUG: Summary after event processing - REMOVE BEFORE RELEASE
+            Log.Information(">>> VisualQueryPlan: Event processing complete - PhysicalRows={Physical}, LogicalRows={Logical}, SEEvents={SE}",
+                physicalPlanRows.Count, logicalPlanRows.Count, timingEvents.Count);
 
             // Enrich the plans asynchronously
             try
@@ -362,6 +422,12 @@ namespace DaxStudio.UI.ViewModels
                         logicalPlanRows,
                         null,
                         ActivityID);
+                }
+
+                // Cross-reference logical plan with physical plan to infer engine types and row counts
+                if (_logicalPlan != null && _physicalPlan != null)
+                {
+                    _enrichmentService.CrossReferenceLogicalWithPhysical(_logicalPlan, _physicalPlan);
                 }
 
                 // Update the displayed plan
@@ -476,6 +542,11 @@ namespace DaxStudio.UI.ViewModels
         public void SelectNode(PlanNodeViewModel node)
         {
             SelectedNode = node;
+            // Auto-switch to Node Details tab when a node is selected (index 0)
+            if (node != null)
+            {
+                SelectedTabIndex = 0;
+            }
         }
 
         public void NavigateToIssue(IssueViewModel issue)
@@ -615,6 +686,33 @@ namespace DaxStudio.UI.ViewModels
 
         #region Private Methods
 
+        /// <summary>
+        /// Extracts estimated rows and KB from xmSQL query text pattern:
+        /// "Estimated size: rows = X, bytes = Y"
+        /// </summary>
+        private void ExtractEstimatedSizeFromQuery(TraceStorageEngineEvent seEvent)
+        {
+            if (string.IsNullOrEmpty(seEvent.Query)) return;
+
+            // Look for pattern: "Estimated size: rows = 3655, bytes = 458752"
+            var match = System.Text.RegularExpressions.Regex.Match(
+                seEvent.Query,
+                @"Estimated size:\s*rows\s*=\s*(\d+),\s*bytes\s*=\s*(\d+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (match.Success)
+            {
+                if (long.TryParse(match.Groups[1].Value, out var rows))
+                {
+                    seEvent.EstimatedRows = rows;
+                }
+                if (long.TryParse(match.Groups[2].Value, out var bytes))
+                {
+                    seEvent.EstimatedKBytes = bytes / 1024;  // Convert bytes to KB
+                }
+            }
+        }
+
         private void UpdateDisplayedPlan()
         {
             var plan = ShowPhysicalPlan ? _physicalPlan : _logicalPlan;
@@ -630,11 +728,181 @@ namespace DaxStudio.UI.ViewModels
 
             if (RootNode != null)
             {
+                // Collapse simple comparison operators to reduce visual clutter
+                CollapseComparisonNodes(RootNode);
+
                 CollectAllNodes(RootNode, AllNodes);
+                ResolveMeasureFormulas(AllNodes);
                 CalculateLayout();
             }
 
             NotifyOfPropertyChange(nameof(HasPlanData));
+        }
+
+        /// <summary>
+        /// Recursively collapses simple comparison operators with their operand children
+        /// into single nodes for cleaner display. E.g., "GreaterThan" with "ColValue" and "Constant"
+        /// children becomes a single "[Amount] > 100" node.
+        /// </summary>
+        private void CollapseComparisonNodes(PlanNodeViewModel node)
+        {
+            if (node == null) return;
+
+            // Process children first (bottom-up), since we'll be modifying the tree
+            foreach (var child in node.Children.ToList())
+            {
+                CollapseComparisonNodes(child);
+            }
+
+            // Now try to collapse this node if it's a simple comparison
+            node.CollapseIfPossible();
+        }
+
+        /// <summary>
+        /// Resolves DAX measure formulas from model metadata for nodes with measure references.
+        /// </summary>
+        private void ResolveMeasureFormulas(BindableCollection<PlanNodeViewModel> nodes)
+        {
+            // Try to get measure expressions from the document/connection
+            // This requires access to model metadata - will be populated when available
+            var measureExpressions = GetMeasureExpressions();
+            if (measureExpressions == null || measureExpressions.Count == 0)
+            {
+                Log.Debug("VisualQueryPlanViewModel: No measure expressions available for formula resolution");
+                return;
+            }
+
+            int resolved = 0;
+            foreach (var node in nodes)
+            {
+                if (!node.HasMeasureReference)
+                    continue;
+
+                // Strip brackets: "[Internet Sales]" -> "Internet Sales"
+                var measureName = node.MeasureReference.Trim('[', ']');
+
+                if (measureExpressions.TryGetValue(measureName, out var formula))
+                {
+                    node.MeasureFormula = formula;
+                    resolved++;
+                }
+            }
+
+            Log.Debug("VisualQueryPlanViewModel: Resolved {Count} measure formulas", resolved);
+        }
+
+        /// <summary>
+        /// Gets the dictionary of measure expressions from the model metadata and query-scoped DEFINE MEASURE statements.
+        /// </summary>
+        private Dictionary<string, string> GetMeasureExpressions()
+        {
+            var expressions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                // First, parse query-scoped DEFINE MEASURE statements from the query text
+                // These take priority as they override model measures
+                var queryText = QueryHistoryEvent?.QueryText;
+                if (!string.IsNullOrEmpty(queryText))
+                {
+                    ParseQueryScopedMeasures(queryText, expressions);
+                }
+
+                // Then add model measures (won't override query-scoped ones due to ContainsKey check)
+                var connManager = Document?.Connection as Model.ConnectionManager;
+                if (connManager?.SelectedModel != null)
+                {
+                    var model = connManager.SelectedModel;
+
+                    // Try the cached MeasureExpressions dictionary first
+                    if (model.MeasureExpressions != null && model.MeasureExpressions.Count > 0)
+                    {
+                        foreach (var kvp in model.MeasureExpressions)
+                        {
+                            if (!expressions.ContainsKey(kvp.Key))
+                            {
+                                expressions[kvp.Key] = kvp.Value;
+                            }
+                        }
+                        Log.Debug("VisualQueryPlanViewModel: Added {Count} model measure expressions", model.MeasureExpressions.Count);
+                    }
+                    // Fallback: Build from Tables/Measures
+                    else if (model.Tables != null)
+                    {
+                        foreach (var table in model.Tables)
+                        {
+                            if (table.Measures != null)
+                            {
+                                foreach (var measure in table.Measures)
+                                {
+                                    if (!string.IsNullOrEmpty(measure.Name) && !string.IsNullOrEmpty(measure.Expression))
+                                    {
+                                        var name = measure.Name.Trim('[', ']');
+                                        if (!expressions.ContainsKey(name))
+                                        {
+                                            expressions[name] = measure.Expression;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "VisualQueryPlanViewModel: Failed to access measure expressions");
+            }
+
+            Log.Debug("VisualQueryPlanViewModel: Total measure expressions available: {Count}", expressions.Count);
+            return expressions;
+        }
+
+        /// <summary>
+        /// Parses DEFINE MEASURE statements from query text to extract query-scoped measures.
+        /// </summary>
+        private void ParseQueryScopedMeasures(string queryText, Dictionary<string, string> expressions)
+        {
+            // Pattern: DEFINE MEASURE 'Table'[MeasureName] = <expression>
+            // or: DEFINE MEASURE [MeasureName] = <expression>
+            // Expression continues until next DEFINE, EVALUATE, VAR, or end of text
+            var pattern = @"DEFINE\s+MEASURE\s+(?:'[^']*')?\[([^\]]+)\]\s*=\s*";
+            var matches = Regex.Matches(queryText, pattern, RegexOptions.IgnoreCase | RegexOptions.Multiline);
+
+            foreach (Match match in matches)
+            {
+                var measureName = match.Groups[1].Value;
+                var expressionStart = match.Index + match.Length;
+
+                // Find where the expression ends (next DEFINE, EVALUATE, or end)
+                var remainingText = queryText.Substring(expressionStart);
+                var endPatterns = new[] { @"\bDEFINE\b", @"\bEVALUATE\b", @"\bVAR\b" };
+                var endIndex = remainingText.Length;
+
+                foreach (var endPattern in endPatterns)
+                {
+                    var endMatch = Regex.Match(remainingText, endPattern, RegexOptions.IgnoreCase);
+                    if (endMatch.Success && endMatch.Index < endIndex)
+                    {
+                        endIndex = endMatch.Index;
+                    }
+                }
+
+                var expression = remainingText.Substring(0, endIndex).Trim();
+
+                // Remove trailing comments if any
+                var commentIndex = expression.LastIndexOf("/*");
+                if (commentIndex > 0 && expression.IndexOf("*/", commentIndex) > commentIndex)
+                {
+                    // Has a complete comment at end, might need to trim
+                }
+
+                if (!string.IsNullOrEmpty(measureName) && !string.IsNullOrEmpty(expression))
+                {
+                    expressions[measureName] = expression;
+                    Log.Debug("VisualQueryPlanViewModel: Parsed query-scoped measure [{MeasureName}]", measureName);
+                }
+            }
         }
 
         private void CollectAllNodes(PlanNodeViewModel node, BindableCollection<PlanNodeViewModel> collection)
