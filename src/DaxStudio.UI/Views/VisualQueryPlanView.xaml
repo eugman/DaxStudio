@@ -21,18 +21,21 @@
             <conv:BoolToHiddenConverter x:Key="BoolToVisibilityConverter" />
             <conv:BoolToHiddenConverter x:Key="BoolToHiddenConverter" />
             <conv:BoolToCollapsedConverter x:Key="BoolToCollapsedConverter" />
+            <conv:BoolToNotCollapsedConverter x:Key="BoolToNotCollapsedConverter" />
             <conv:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
 
             <!-- Node Template for the graph -->
             <DataTemplate x:Key="PlanNodeTemplate">
                 <Border Background="{Binding BackgroundBrush}"
                         BorderBrush="{Binding BorderBrush}"
-                        BorderThickness="2"
+                        BorderThickness="1"
                         CornerRadius="4"
                         Width="{Binding Width}"
                         Height="{Binding Height}"
                         Cursor="Hand"
-                        ToolTip="{Binding TooltipText}">
+                        ToolTip="{Binding TooltipText}"
+                        ToolTipService.InitialShowDelay="200"
+                        ToolTipService.ShowDuration="30000">
                     <Grid Margin="8,4">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -238,7 +241,8 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <ItemsControl ItemsSource="{Binding Children}">
+                                    <!-- Use VisibleChildren to exclude collapsed child nodes from edge rendering -->
+                                    <ItemsControl ItemsSource="{Binding VisibleChildren}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <Canvas/>
@@ -246,9 +250,35 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Path Stroke="{DynamicResource Theme.Brush.Control.Border}"
-                                                      StrokeThickness="1.5"
-                                                      Fill="Transparent">
+                                                <Path Stroke="{Binding EdgeColor}"
+                                                      StrokeThickness="{Binding EdgeThickness}"
+                                                      Fill="Transparent"
+                                                      Opacity="0.85"
+                                                      ToolTipService.InitialShowDelay="200"
+                                                      ToolTipService.ShowDuration="30000">
+                                                    <Path.ToolTip>
+                                                        <ToolTip>
+                                                            <StackPanel MinWidth="140">
+                                                                <TextBlock Text="Data Flow" FontWeight="Bold" FontSize="11" Margin="0,0,0,4"/>
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="Auto"/>
+                                                                        <RowDefinition Height="Auto"/>
+                                                                        <RowDefinition Height="Auto"/>
+                                                                    </Grid.RowDefinitions>
+                                                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Rows:" Foreground="Gray" Margin="0,0,8,2"/>
+                                                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RowsDisplayFormatted}" FontWeight="SemiBold" Foreground="{Binding RowCountColor}"/>
+                                                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Size:" Foreground="Gray" Margin="0,0,8,2" Visibility="{Binding HasDataSize, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DataSizeDisplay}" FontWeight="SemiBold" Visibility="{Binding HasDataSize, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                                                    <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding OperatorDisplayName}" FontSize="10" Foreground="Gray" Margin="0,4,0,0"/>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </ToolTip>
+                                                    </Path.ToolTip>
                                                     <Path.Data>
                                                         <PathGeometry>
                                                             <PathFigure StartPoint="{Binding Parent.EdgeBottom}">
@@ -288,30 +318,92 @@
                                             Width="{Binding Width}"
                                             Height="{Binding Height}"
                                             Cursor="Hand"
-                                            ToolTip="{Binding TooltipText}"
+                                            cal:Action.TargetWithoutContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             cal:Message.Attach="[Event MouseLeftButtonDown] = [Action SelectNode($dataContext)]">
-                                        <Grid Margin="8,4">
+                                        <Border.ToolTip>
+                                            <ToolTip MaxWidth="350">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding OperatorDisplayName}" FontWeight="Bold" FontSize="12"/>
+                                                    <TextBlock Text="{Binding OperatorCategory}" Foreground="Gray" FontSize="10" Margin="0,2,0,4"/>
+                                                    <TextBlock Text="{Binding OperatorDescription}" TextWrapping="Wrap" FontSize="11"/>
+                                                    <Separator Margin="0,6"/>
+                                                    <TextBlock Text="{Binding FullOperation}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Foreground="#666"/>
+                                                </StackPanel>
+                                            </ToolTip>
+                                        </Border.ToolTip>
+                                        <Grid Margin="6,4">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="*"/>
                                                 <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
                                             <!-- Operation name -->
                                             <TextBlock Grid.Row="0"
-                                                       Text="{Binding DisplayText}"
+                                                       Text="{Binding OperatorDisplayName}"
                                                        FontWeight="SemiBold"
+                                                       FontSize="11"
+                                                       Foreground="#FF333333"
                                                        TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center"/>
 
-                                            <!-- Records count -->
-                                            <TextBlock Grid.Row="2"
-                                                       Text="{Binding RecordsDisplay}"
-                                                       FontSize="10"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Visibility="{Binding RecordsDisplay, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                            <!-- Engine badge PRIMARY, then row count -->
+                                            <Grid Grid.Row="1" Margin="0,3,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
 
-                                            <!-- Issue indicator -->
+                                                <!-- Engine badge (SE=green, FE=purple) - PRIMARY -->
+                                                <Border Grid.Column="0"
+                                                        CornerRadius="3"
+                                                        Padding="6,2"
+                                                        Background="{Binding EngineBadgeBackground}"
+                                                        Visibility="{Binding HasEngineBadge, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                    <TextBlock Text="{Binding EngineBadge}"
+                                                               FontSize="10"
+                                                               FontWeight="Bold"
+                                                               Foreground="{Binding EngineBadgeForeground}"/>
+                                                </Border>
+
+                                                <!-- Row count with severity color -->
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding RowsDisplayFormatted}"
+                                                           FontSize="10"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{Binding RowCountColor}"
+                                                           HorizontalAlignment="Right"
+                                                           VerticalAlignment="Center"
+                                                           Visibility="{Binding HasRecords, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                            </Grid>
+
+                                            <!-- Badges row: Cache hit, Callback warning -->
+                                            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,2,0,0">
+                                                <!-- Cache hit indicator -->
+                                                <Border Background="#2196F3"
+                                                        CornerRadius="2"
+                                                        Padding="4,1"
+                                                        Margin="0,0,4,0"
+                                                        Visibility="{Binding IsCacheHit, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                    <TextBlock Text="Cache"
+                                                               FontSize="8"
+                                                               FontWeight="Bold"
+                                                               Foreground="White"/>
+                                                </Border>
+                                                <!-- Callback warning indicator -->
+                                                <Border Background="#FF5722"
+                                                        CornerRadius="2"
+                                                        Padding="4,1"
+                                                        Visibility="{Binding HasCallback, Converter={StaticResource BoolToCollapsedConverter}}"
+                                                        ToolTip="CallbackDataID - SE calling FE (not cached)">
+                                                    <TextBlock Text="CB"
+                                                               FontSize="8"
+                                                               FontWeight="Bold"
+                                                               Foreground="White"/>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <!-- Issue indicator (top-right corner) -->
                                             <Ellipse Grid.Row="0"
                                                      Width="12" Height="12"
                                                      Fill="#FFD700"
@@ -337,14 +429,437 @@
                           VerticalAlignment="Stretch"
                           Background="Transparent"/>
 
-            <!-- Right panel with TabControl for Issues and Node Details -->
+            <!-- Right panel with TabControl for Node Details and Issues -->
             <controls:ClipBorder Grid.Column="2"
                                  CornerRadius="4"
                                  BorderThickness="1"
                                  BorderBrush="{DynamicResource Theme.Brush.Control.Border}">
                 <TabControl Background="{DynamicResource Theme.Brush.Content.Back}"
-                            BorderThickness="0">
-                    <!-- Issues Tab -->
+                            BorderThickness="0"
+                            Padding="0"
+                            SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
+                    <TabControl.Resources>
+                        <Style TargetType="TabItem">
+                            <Setter Property="Padding" Value="12,6"/>
+                            <Setter Property="Margin" Value="2,0"/>
+                        </Style>
+                    </TabControl.Resources>
+
+                    <!-- Node Details Tab (index 0) -->
+                    <TabItem Header="Node Details">
+                        <Grid>
+                            <!-- No node selected message - show when NO node is selected -->
+                            <TextBlock Text="Select a node to view details"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource MutedTextBrush}"
+                                       Visibility="{Binding HasSelectedNode, Converter={StaticResource BoolToNotCollapsedConverter}}"/>
+
+                            <!-- Node details content - show when a node IS selected -->
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Visibility="{Binding HasSelectedNode, Converter={StaticResource BoolToCollapsedConverter}}">
+                                <StackPanel Margin="8" DataContext="{Binding SelectedNode}">
+                                    <!-- Node header with operator name -->
+                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                            CornerRadius="4"
+                                            Padding="8"
+                                            Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding OperatorDisplayName}"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+                                            <TextBlock Text="{Binding OperatorDescription}"
+                                                       TextWrapping="Wrap"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- 1. ENGINE SECTION (FE/SE) - TOP PRIORITY -->
+                                    <TextBlock Text="ENGINE"
+                                               FontWeight="Bold"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Margin="0,0,0,4"/>
+                                    <Border CornerRadius="4"
+                                            Padding="10,8"
+                                            Margin="0,0,0,10"
+                                            Background="{Binding EngineBadgeBackground}">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding EngineBadge}"
+                                                           FontSize="16"
+                                                           FontWeight="Bold"
+                                                           Foreground="White"
+                                                           Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding EngineTypeDisplay}"
+                                                           FontSize="12"
+                                                           Foreground="White"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock FontSize="10"
+                                                           Foreground="White"
+                                                           Opacity="0.85">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Multi-threaded, highly optimized"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding EngineBadge}" Value="FE">
+                                                                    <Setter Property="Text" Value="Single-threaded, handles complex DAX"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <!-- Parallelism indicator -->
+                                                <Border Background="White"
+                                                        Opacity="0.9"
+                                                        CornerRadius="3"
+                                                        Padding="6,2"
+                                                        Margin="8,0,0,0"
+                                                        Visibility="{Binding HasParallelism, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                    <TextBlock Text="{Binding ParallelismDisplay}"
+                                                               FontSize="10"
+                                                               FontWeight="Bold"
+                                                               Foreground="{Binding EngineBadgeBackground}"/>
+                                                </Border>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- 2. PERFORMANCE METRICS - Row counts, duration, data size -->
+                                    <TextBlock Text="PERFORMANCE METRICS"
+                                               FontWeight="Bold"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Margin="0,0,0,4"/>
+                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                            CornerRadius="3"
+                                            Padding="8"
+                                            Margin="0,0,0,10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+
+                                            <!-- Rows with severity color and source indicator -->
+                                            <TextBlock Grid.Row="0" Grid.Column="0"
+                                                       Text="Rows:"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       Margin="0,0,12,4"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="1"
+                                                       Text="{Binding RecordsWithSourceDisplay}"
+                                                       FontWeight="Bold"
+                                                       FontSize="12"
+                                                       Foreground="{Binding RowCountColor}"
+                                                       Margin="0,0,0,4"/>
+
+                                            <!-- Duration -->
+                                            <TextBlock Grid.Row="1" Grid.Column="0"
+                                                       Text="Duration:"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       Margin="0,0,12,4"
+                                                       Visibility="{Binding HasDuration, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="1"
+                                                       Text="{Binding DurationDisplay}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Theme.Brush.Default.Fore}"
+                                                       Margin="0,0,0,4"
+                                                       Visibility="{Binding HasDuration, Converter={StaticResource BoolToCollapsedConverter}}"/>
+
+                                            <!-- CPU Time -->
+                                            <TextBlock Grid.Row="2" Grid.Column="0"
+                                                       Text="CPU Time:"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       Margin="0,0,12,4"
+                                                       Visibility="{Binding HasCpuTime, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="1"
+                                                       Text="{Binding CpuTimeDisplay}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Theme.Brush.Default.Fore}"
+                                                       Margin="0,0,0,4"
+                                                       Visibility="{Binding HasCpuTime, Converter={StaticResource BoolToCollapsedConverter}}"/>
+
+                                            <!-- Net Parallel Duration -->
+                                            <TextBlock Grid.Row="3" Grid.Column="0"
+                                                       Text="Net Duration:"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       Margin="0,0,12,4"
+                                                       Visibility="{Binding HasNetParallelDuration, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="1"
+                                                       Text="{Binding NetParallelDurationDisplay}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Theme.Brush.Default.Fore}"
+                                                       Margin="0,0,0,4"
+                                                       Visibility="{Binding HasNetParallelDuration, Converter={StaticResource BoolToCollapsedConverter}}"/>
+
+                                            <!-- Data Size -->
+                                            <TextBlock Grid.Row="4" Grid.Column="0"
+                                                       Text="Data Size:"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       Margin="0,0,12,4"
+                                                       Visibility="{Binding HasDataSize, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="1"
+                                                       Text="{Binding DataSizeDisplay}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Theme.Brush.Default.Fore}"
+                                                       Margin="0,0,0,4"
+                                                       Visibility="{Binding HasDataSize, Converter={StaticResource BoolToCollapsedConverter}}"/>
+
+                                            <!-- Cost -->
+                                            <TextBlock Grid.Row="5" Grid.Column="0"
+                                                       Text="Cost:"
+                                                       Foreground="{DynamicResource MutedTextBrush}"
+                                                       Margin="0,0,12,0"
+                                                       Visibility="{Binding HasCost, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                            <TextBlock Grid.Row="5" Grid.Column="1"
+                                                       Text="{Binding CostDisplay}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource Theme.Brush.Default.Fore}"
+                                                       Visibility="{Binding HasCost, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- 3. CALLBACK WARNING (if CallbackDataID present) -->
+                                    <Border Background="#FFF3E0"
+                                            BorderBrush="#FF5722"
+                                            BorderThickness="0,0,0,3"
+                                            CornerRadius="3"
+                                            Padding="10"
+                                            Margin="0,0,0,10"
+                                            Visibility="{Binding HasCallback, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" Foreground="#FF5722" FontSize="14" Margin="0,0,6,0"/>
+                                                <TextBlock Text="CALLBACK DETECTED"
+                                                           FontWeight="Bold"
+                                                           FontSize="11"
+                                                           Foreground="#FF5722"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding CallbackWarningText}"
+                                                       TextWrapping="Wrap"
+                                                       FontSize="10"
+                                                       Foreground="#333"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                <TextBlock Text="CallbackDataID: "
+                                                           FontSize="10"
+                                                           Foreground="#666"/>
+                                                <TextBlock Text="{Binding CallbackDataId}"
+                                                           FontSize="10"
+                                                           FontWeight="Bold"
+                                                           Foreground="#FF5722"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- 4. DATA REFERENCES (Table/Column names) -->
+                                    <StackPanel Visibility="{Binding HasTableReference, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="DATA REFERENCES"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                                           Text="Table:"
+                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                           Margin="0,0,12,4"/>
+                                                <TextBlock Grid.Row="0" Grid.Column="1"
+                                                           Text="{Binding TableReference}"
+                                                           FontWeight="SemiBold"
+                                                           FontFamily="Consolas"
+                                                           Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+                                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                                           Text="Columns:"
+                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                           Margin="0,0,12,0"
+                                                           Visibility="{Binding HasColumnReferences, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                                <TextBlock Grid.Row="1" Grid.Column="1"
+                                                           Text="{Binding ColumnReferences}"
+                                                           TextWrapping="Wrap"
+                                                           FontFamily="Consolas"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource Theme.Brush.Default.Fore}"
+                                                           Visibility="{Binding HasColumnReferences, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- 5. DAX MEASURE REFERENCE -->
+                                    <StackPanel Visibility="{Binding HasMeasureReference, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="DAX REFERENCE"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding MeasureReference}"
+                                                           FontFamily="Consolas"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#0066CC"/>
+                                                <!-- Measure formula (if available) -->
+                                                <Border Background="{DynamicResource Theme.Brush.Content.Back}"
+                                                        BorderBrush="{DynamicResource Theme.Brush.Control.Border}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="3"
+                                                        Padding="8"
+                                                        Margin="0,6,0,0"
+                                                        Visibility="{Binding HasMeasureFormula, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                    <TextBlock Text="{Binding MeasureFormula}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="10"
+                                                               TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- 6. xmSQL Section (Storage Engine Query) -->
+                                    <StackPanel Visibility="{Binding HasXmSql, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="xmSQL QUERY"
+                                                       FontWeight="Bold"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource MutedTextBrush}"/>
+                                            <Border Background="#4CAF50"
+                                                    CornerRadius="2"
+                                                    Padding="4,1"
+                                                    Margin="8,0,0,0"
+                                                    Visibility="{Binding IsCacheHit, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                <TextBlock Text="CACHE HIT"
+                                                           FontSize="8"
+                                                           FontWeight="Bold"
+                                                           Foreground="White"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding ResolvedXmSql}"
+                                                       TextWrapping="Wrap"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"/>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- 7. Full Operation (collapsed by default, more technical) -->
+                                    <TextBlock Text="OPERATION STRING"
+                                               FontWeight="Bold"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Margin="0,0,0,4"/>
+                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                            CornerRadius="3"
+                                            Padding="6"
+                                            Margin="0,0,0,10">
+                                        <TextBlock Text="{Binding FullOperation}"
+                                                   TextWrapping="Wrap"
+                                                   FontFamily="Consolas"
+                                                   FontSize="9"
+                                                   Foreground="{DynamicResource MutedTextBrush}"/>
+                                    </Border>
+
+                                    <!-- Issues Section (if any) -->
+                                    <StackPanel Visibility="{Binding HasIssues, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="ISSUES"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <ItemsControl ItemsSource="{Binding Issues}" Margin="0,0,0,10">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                            BorderBrush="#FFFFA500"
+                                                            BorderThickness="0,0,0,2"
+                                                            CornerRadius="3"
+                                                            Padding="8"
+                                                            Margin="0,0,0,4">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding IssueType}"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#FFFF8C00"/>
+                                                            <TextBlock Text="{Binding Description}"
+                                                                       TextWrapping="Wrap"
+                                                                       FontSize="11"
+                                                                       Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
+                                    <!-- 8. DOCUMENTATION LINKS -->
+                                    <TextBlock Text="DOCUMENTATION"
+                                               FontWeight="Bold"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource MutedTextBrush}"
+                                               Margin="0,0,0,4"/>
+                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                            CornerRadius="3"
+                                            Padding="8"
+                                            Margin="0,0,0,0">
+                                        <StackPanel>
+                                            <TextBlock Margin="0,0,0,4">
+                                                <Hyperlink NavigateUri="https://docs.sqlbi.com/dax-internals/vertipaq/logical-query-plan"
+                                                           RequestNavigate="Hyperlink_RequestNavigate">
+                                                    Logical Query Plan (SQLBI)
+                                                </Hyperlink>
+                                            </TextBlock>
+                                            <TextBlock Margin="0,0,0,4">
+                                                <Hyperlink NavigateUri="https://docs.sqlbi.com/dax-internals/vertipaq/physical-query-plan"
+                                                           RequestNavigate="Hyperlink_RequestNavigate">
+                                                    Physical Query Plan (SQLBI)
+                                                </Hyperlink>
+                                            </TextBlock>
+                                            <TextBlock>
+                                                <Hyperlink NavigateUri="https://docs.sqlbi.com/dax-internals/vertipaq/xmSQL"
+                                                           RequestNavigate="Hyperlink_RequestNavigate">
+                                                    xmSQL Reference (SQLBI)
+                                                </Hyperlink>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- Issues Tab (index 1) -->
                     <TabItem Header="Issues">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -476,208 +991,6 @@
                                        VerticalAlignment="Center"
                                        Foreground="{DynamicResource MutedTextBrush}"
                                        Visibility="{Binding HasIssues, Converter={StaticResource BoolToHiddenConverter}}"/>
-                        </Grid>
-                    </TabItem>
-
-                    <!-- Node Details Tab -->
-                    <TabItem Header="Node Details">
-                        <Grid>
-                            <!-- No node selected message -->
-                            <TextBlock Text="Select a node to view details"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource MutedTextBrush}"
-                                       Visibility="{Binding HasSelectedNode, Converter={StaticResource BoolToHiddenConverter}}"/>
-
-                            <!-- Node details content -->
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          Visibility="{Binding HasSelectedNode, Converter={StaticResource BoolToCollapsedConverter}}">
-                                <StackPanel Margin="8" DataContext="{Binding SelectedNode}">
-                                    <!-- Node header -->
-                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
-                                            CornerRadius="4"
-                                            Padding="8"
-                                            Margin="0,0,0,8">
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding DisplayText}"
-                                                       FontSize="14"
-                                                       FontWeight="SemiBold"/>
-                                            <TextBlock Text="{Binding EngineTypeDisplay}"
-                                                       FontSize="11"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,2,0,0"/>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- Full Operation -->
-                                    <TextBlock Text="Operation"
-                                               FontWeight="SemiBold"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource MutedTextBrush}"
-                                               Margin="0,0,0,4"/>
-                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
-                                            CornerRadius="3"
-                                            Padding="6"
-                                            Margin="0,0,0,12">
-                                        <TextBlock Text="{Binding FullOperation}"
-                                                   TextWrapping="Wrap"
-                                                   FontFamily="Consolas"
-                                                   FontSize="11"/>
-                                    </Border>
-
-                                    <!-- Metrics Section -->
-                                    <TextBlock Text="Metrics"
-                                               FontWeight="SemiBold"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource MutedTextBrush}"
-                                               Margin="0,0,0,4"/>
-                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
-                                            CornerRadius="3"
-                                            Padding="8"
-                                            Margin="0,0,0,12">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-
-                                            <!-- Node ID -->
-                                            <TextBlock Grid.Row="0" Grid.Column="0"
-                                                       Text="Node ID:"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,0,12,4"/>
-                                            <TextBlock Grid.Row="0" Grid.Column="1"
-                                                       Text="{Binding NodeId}"
-                                                       FontWeight="SemiBold"
-                                                       Margin="0,0,0,4"/>
-
-                                            <!-- Records -->
-                                            <TextBlock Grid.Row="1" Grid.Column="0"
-                                                       Text="Records:"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,0,12,4"
-                                                       Visibility="{Binding HasRecords, Converter={StaticResource BoolToCollapsedConverter}}"/>
-                                            <TextBlock Grid.Row="1" Grid.Column="1"
-                                                       Text="{Binding RecordsDisplay}"
-                                                       FontWeight="SemiBold"
-                                                       Margin="0,0,0,4"
-                                                       Visibility="{Binding HasRecords, Converter={StaticResource BoolToCollapsedConverter}}"/>
-
-                                            <!-- Cost -->
-                                            <TextBlock Grid.Row="2" Grid.Column="0"
-                                                       Text="Cost:"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,0,12,4"
-                                                       Visibility="{Binding HasCost, Converter={StaticResource BoolToCollapsedConverter}}"/>
-                                            <TextBlock Grid.Row="2" Grid.Column="1"
-                                                       Text="{Binding CostDisplay}"
-                                                       FontWeight="SemiBold"
-                                                       Margin="0,0,0,4"
-                                                       Visibility="{Binding HasCost, Converter={StaticResource BoolToCollapsedConverter}}"/>
-
-                                            <!-- Duration -->
-                                            <TextBlock Grid.Row="3" Grid.Column="0"
-                                                       Text="Duration:"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,0,12,4"
-                                                       Visibility="{Binding HasDuration, Converter={StaticResource BoolToCollapsedConverter}}"/>
-                                            <TextBlock Grid.Row="3" Grid.Column="1"
-                                                       Text="{Binding DurationDisplay}"
-                                                       FontWeight="SemiBold"
-                                                       Margin="0,0,0,4"
-                                                       Visibility="{Binding HasDuration, Converter={StaticResource BoolToCollapsedConverter}}"/>
-
-                                            <!-- Level -->
-                                            <TextBlock Grid.Row="4" Grid.Column="0"
-                                                       Text="Level:"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,0,12,0"/>
-                                            <TextBlock Grid.Row="4" Grid.Column="1"
-                                                       Text="{Binding Level}"
-                                                       FontWeight="SemiBold"/>
-                                        </Grid>
-                                    </Border>
-
-                                    <!-- Tree Position Section -->
-                                    <TextBlock Text="Tree Position"
-                                               FontWeight="SemiBold"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource MutedTextBrush}"
-                                               Margin="0,0,0,4"/>
-                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
-                                            CornerRadius="3"
-                                            Padding="8"
-                                            Margin="0,0,0,12">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-
-                                            <!-- Parent -->
-                                            <TextBlock Grid.Row="0" Grid.Column="0"
-                                                       Text="Parent:"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,0,12,4"/>
-                                            <TextBlock Grid.Row="0" Grid.Column="1"
-                                                       Text="{Binding ParentInfo}"
-                                                       TextWrapping="Wrap"
-                                                       Margin="0,0,0,4"/>
-
-                                            <!-- Children -->
-                                            <TextBlock Grid.Row="1" Grid.Column="0"
-                                                       Text="Children:"
-                                                       Foreground="{DynamicResource MutedTextBrush}"
-                                                       Margin="0,0,12,0"/>
-                                            <TextBlock Grid.Row="1" Grid.Column="1"
-                                                       Text="{Binding ChildCount}"/>
-                                        </Grid>
-                                    </Border>
-
-                                    <!-- Issues Section (if any) -->
-                                    <StackPanel Visibility="{Binding HasIssues, Converter={StaticResource BoolToCollapsedConverter}}">
-                                        <TextBlock Text="Issues"
-                                                   FontWeight="SemiBold"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource MutedTextBrush}"
-                                                   Margin="0,0,0,4"/>
-                                        <ItemsControl ItemsSource="{Binding Issues}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
-                                                            BorderBrush="#FFFFA500"
-                                                            BorderThickness="0,0,0,2"
-                                                            CornerRadius="3"
-                                                            Padding="8"
-                                                            Margin="0,0,0,4">
-                                                        <StackPanel>
-                                                            <TextBlock Text="{Binding IssueType}"
-                                                                       FontWeight="SemiBold"
-                                                                       Foreground="#FFFF8C00"/>
-                                                            <TextBlock Text="{Binding Description}"
-                                                                       TextWrapping="Wrap"
-                                                                       FontSize="11"
-                                                                       Margin="0,4,0,0"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </StackPanel>
-                            </ScrollViewer>
                         </Grid>
                     </TabItem>
                 </TabControl>
