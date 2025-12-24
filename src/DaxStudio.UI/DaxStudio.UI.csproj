@@ -596,6 +596,7 @@
     <Compile Include="Model\PerformanceIssue.cs" />
     <Compile Include="Model\EnrichedPlanNode.cs" />
     <Compile Include="Model\EnrichedQueryPlan.cs" />
+    <Compile Include="Model\DaxOperatorDictionary.cs" />
     <Compile Include="Interfaces\IToolWindow.cs" />
     <Compile Include="Model\RunStyle.cs" />
     <Compile Include="Model\ServerTimesModel.cs" />
