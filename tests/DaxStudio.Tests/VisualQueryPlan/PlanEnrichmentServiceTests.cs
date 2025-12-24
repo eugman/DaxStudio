@@ -179,5 +179,378 @@ namespace DaxStudio.Tests.VisualQueryPlan
 
             return rows;
         }
+
+        #region Timing Correlation Tests
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithTimingEvents_CorrelatesData()
+        {
+            // Arrange
+            var rawPlan = CreatePlanWithScanNodes();
+            var timingEvents = CreateSampleTimingEvents();
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rawPlan,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("Scan_Vertipaq"));
+            Assert.IsNotNull(scanNode, "Should find Scan_Vertipaq node");
+            Assert.AreEqual(100, scanNode.DurationMs, "Duration should be correlated from timing event");
+            Assert.AreEqual(50, scanNode.CpuTimeMs, "CPU time should be correlated from timing event");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_ReconcilesRowCounts_WhenPlanShowsZero()
+        {
+            // Arrange - plan with 0 records, includes table reference for matching
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Customer'[FirstName]) #Records=0", 1);
+            rows.Add(row);
+
+            // Timing event with estimated rows and ObjectName for matching
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    EstimatedRows = 3655,  // Server timing shows actual rows
+                    ObjectName = "Customer",  // Must match table name in operation
+                    Query = "SELECT..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(3655, scanNode.Records, "Records should be reconciled from timing event EstimatedRows");
+            Assert.AreEqual("ServerTiming", scanNode.RecordsSource, "RecordsSource should indicate data came from ServerTiming");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_CalculatesParallelism()
+        {
+            // Arrange - includes table reference for matching
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=1000", 1);
+            rows.Add(row);
+
+            // Timing event with parallelism data and ObjectName for matching
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 160,           // Total duration
+                    NetParallelDuration = 10, // Net duration after parallelism
+                    CpuTime = 150,
+                    ObjectName = "Sales",     // Must match table name in operation
+                    Query = "SELECT..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(160, scanNode.DurationMs);
+            Assert.AreEqual(10, scanNode.NetParallelDurationMs);
+            Assert.AreEqual(16, scanNode.Parallelism, "Parallelism should be Duration/NetParallelDuration = 160/10 = 16");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_MatchesMultipleTablesByName()
+        {
+            // Arrange - Plan with multiple Scan_Vertipaq nodes for different tables
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("AddColumns: RelLogOp", 1);
+            rows.Add(row1);
+
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(0)('Customer'[FirstName]) #Records=0", 2);
+            rows.Add(row2);
+
+            var row3 = new PhysicalQueryPlanRow();
+            row3.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(0)('Internet Sales'[Margin]) #Records=0", 3);
+            rows.Add(row3);
+
+            // Timing events matched by ObjectName
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent { Duration = 50, CpuTime = 25, EstimatedRows = 673, ObjectName = "Customer" },
+                new TraceStorageEngineEvent { Duration = 30, CpuTime = 15, EstimatedRows = 1, ObjectName = "Internet Sales" }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var customerNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("'Customer'"));
+            var salesNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("'Internet Sales'"));
+
+            Assert.IsNotNull(customerNode, "Should find Customer scan node");
+            Assert.AreEqual(50, customerNode.DurationMs, "Customer node should get timing data");
+            Assert.AreEqual(673, customerNode.Records, "Customer node should get EstimatedRows");
+
+            Assert.IsNotNull(salesNode, "Should find Internet Sales scan node");
+            Assert.AreEqual(30, salesNode.DurationMs, "Internet Sales node should get timing data");
+            Assert.AreEqual(1, salesNode.Records, "Internet Sales node should get EstimatedRows");
+        }
+
+        #endregion
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithMissingObjectName_NoCorrelation()
+        {
+            // Arrange - timing event WITHOUT ObjectName should not match
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=0", 1);
+            rows.Add(row);
+
+            // Timing event missing ObjectName - cannot match
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    EstimatedRows = 5000,
+                    ObjectName = null,  // Missing ObjectName!
+                    Query = "SELECT..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert - node should NOT have timing data because ObjectName was missing
+            var scanNode = result.AllNodes.First();
+            Assert.IsNull(scanNode.DurationMs, "Duration should not be populated when ObjectName is missing");
+            Assert.IsNull(scanNode.CpuTimeMs, "CpuTime should not be populated when ObjectName is missing");
+            Assert.AreEqual(0, scanNode.Records, "Records should remain 0 when no timing match");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithMismatchedObjectName_NoCorrelation()
+        {
+            // Arrange - timing event with wrong ObjectName should not match
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=0", 1);
+            rows.Add(row);
+
+            // Timing event with wrong ObjectName
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    EstimatedRows = 5000,
+                    ObjectName = "Customer",  // Wrong table name!
+                    Query = "SELECT..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert - node should NOT have timing data because ObjectName didn't match
+            var scanNode = result.AllNodes.First();
+            Assert.IsNull(scanNode.DurationMs, "Duration should not be populated when ObjectName doesn't match");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_PopulatesXmSql()
+        {
+            // Arrange
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Product'[Color]) #Records=0", 1);
+            rows.Add(row);
+
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 25,
+                    ObjectName = "Product",
+                    Query = "SELECT 'Product'[Color] FROM 'Product' WHERE..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.IsNotNull(scanNode.XmSql, "XmSql should be populated from timing event");
+            Assert.IsTrue(scanNode.XmSql.Contains("Product"), "XmSql should contain the query text");
+        }
+
+        #region Cross-Reference Tests
+
+        [TestMethod]
+        public void CrossReferenceLogicalWithPhysical_InfersEngineType()
+        {
+            // Arrange
+            var logicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Logical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Sum_Vertipaq: ScaLogOp",
+                        EngineType = EngineType.Unknown
+                    }
+                }
+            };
+
+            var physicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Physical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Sum_Vertipaq: PhyOp",
+                        EngineType = EngineType.StorageEngine,
+                        DurationMs = 100,
+                        Records = 500
+                    }
+                }
+            };
+
+            // Act
+            _service.CrossReferenceLogicalWithPhysical(logicalPlan, physicalPlan);
+
+            // Assert
+            var logicalNode = logicalPlan.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, logicalNode.EngineType, "Engine type should be inferred from physical plan");
+        }
+
+        [TestMethod]
+        public void CrossReferenceLogicalWithPhysical_InheritsTiming()
+        {
+            // Arrange
+            var logicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Logical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Scan_Vertipaq: RelLogOp",
+                        EngineType = EngineType.Unknown,
+                        DurationMs = null
+                    }
+                }
+            };
+
+            var physicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Physical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Scan_Vertipaq: PhyOp",
+                        EngineType = EngineType.StorageEngine,
+                        DurationMs = 150,
+                        CpuTimeMs = 100,
+                        Parallelism = 8,
+                        XmSql = "SELECT FROM 'Sales'..."
+                    }
+                }
+            };
+
+            // Act
+            _service.CrossReferenceLogicalWithPhysical(logicalPlan, physicalPlan);
+
+            // Assert
+            var logicalNode = logicalPlan.AllNodes.First();
+            Assert.AreEqual(150, logicalNode.DurationMs, "Duration should be inherited from physical");
+            Assert.AreEqual(100, logicalNode.CpuTimeMs, "CPU time should be inherited");
+            Assert.AreEqual(8, logicalNode.Parallelism, "Parallelism should be inherited");
+            Assert.AreEqual("SELECT FROM 'Sales'...", logicalNode.XmSql, "xmSQL should be inherited");
+        }
+
+        #endregion
+
+        #region Helper Methods for New Tests
+
+        private BindableCollection<PhysicalQueryPlanRow> CreatePlanWithScanNodes()
+        {
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("AddColumns: RelLogOp", 1);
+            rows.Add(row1);
+
+            // Include table reference for table-name matching
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=0", 2);
+            rows.Add(row2);
+
+            return rows;
+        }
+
+        private List<TraceStorageEngineEvent> CreateSampleTimingEvents()
+        {
+            return new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    NetParallelDuration = 25,
+                    EstimatedRows = 1000,
+                    EstimatedKBytes = 100,
+                    ObjectName = "Sales",  // Must match table name in operation
+                    Query = "SELECT * FROM 'Sales'..."
+                }
+            };
+        }
+
+        #endregion
     }
 }

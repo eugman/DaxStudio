@@ -1,0 +1,251 @@
+{
+  "FileFormatVersion": 3,
+  "PhysicalQueryPlanRows": [
+    {
+      "Records": null,
+      "Operation": "AddColumns: IterPhyOp LogOp=AddColumns IterCols(0)(''[Filtered Margin])",
+      "IndentedOperation": "AddColumns: IterPhyOp LogOp=AddColumns IterCols(0)(''[Filtered Margin])",
+      "Level": 0,
+      "RowNumber": 1,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "SingletonTable: IterPhyOp LogOp=AddColumns",
+      "IndentedOperation": "    SingletonTable: IterPhyOp LogOp=AddColumns",
+      "Level": 1,
+      "RowNumber": 2,
+      "NextSiblingRowNumber": 2,
+      "HighlightRow": false
+    },
+    {
+      "Records": 1,
+      "Operation": "SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq Currency #Records=1 #KeyCols=114 #ValueCols=1 DominantValue=BLANK",
+      "IndentedOperation": "    SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq Currency #Records=1 #KeyCols=114 #ValueCols=1 DominantValue=BLANK",
+      "Level": 1,
+      "RowNumber": 3,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": 1,
+      "Operation": "ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1",
+      "IndentedOperation": "        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1",
+      "Level": 2,
+      "RowNumber": 4,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Cache: IterPhyOp #FieldCols=0 #ValueCols=1",
+      "IndentedOperation": "            Cache: IterPhyOp #FieldCols=0 #ValueCols=1",
+      "Level": 3,
+      "RowNumber": 5,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": true
+    },
+    {
+      "Records": 589,
+      "Operation": "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Filter IterCols(0)('Customer'[First Name]) #Records=589 #KeyCols=1 #ValueCols=0",
+      "IndentedOperation": "                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Filter IterCols(0)('Customer'[First Name]) #Records=589 #KeyCols=1 #ValueCols=0",
+      "Level": 4,
+      "RowNumber": 6,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": 589,
+      "Operation": "AggregationSpool<GroupBy>: SpoolPhyOp #Records=589",
+      "IndentedOperation": "                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=589",
+      "Level": 5,
+      "RowNumber": 7,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Filter: IterPhyOp LogOp=Filter IterCols(0)('Customer'[First Name])",
+      "IndentedOperation": "                        Filter: IterPhyOp LogOp=Filter IterCols(0)('Customer'[First Name])",
+      "Level": 6,
+      "RowNumber": 8,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Extend_Lookup: IterPhyOp LogOp=GreaterThan IterCols(0)('Customer'[First Name])",
+      "IndentedOperation": "                            Extend_Lookup: IterPhyOp LogOp=GreaterThan IterCols(0)('Customer'[First Name])",
+      "Level": 7,
+      "RowNumber": 9,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": 670,
+      "Operation": "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(0)('Customer'[First Name]) #Records=670 #KeyCols=114 #ValueCols=0",
+      "IndentedOperation": "                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(0)('Customer'[First Name]) #Records=670 #KeyCols=114 #ValueCols=0",
+      "Level": 8,
+      "RowNumber": 10,
+      "NextSiblingRowNumber": 13,
+      "HighlightRow": false
+    },
+    {
+      "Records": 670,
+      "Operation": "ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=670",
+      "IndentedOperation": "                                    ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=670",
+      "Level": 9,
+      "RowNumber": 11,
+      "NextSiblingRowNumber": 13,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Cache: IterPhyOp #FieldCols=1 #ValueCols=0",
+      "IndentedOperation": "                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=0",
+      "Level": 10,
+      "RowNumber": 12,
+      "NextSiblingRowNumber": 12,
+      "HighlightRow": true
+    },
+    {
+      "Records": null,
+      "Operation": "GreaterThan: LookupPhyOp LogOp=GreaterThan LookupCols(0)('Customer'[First Name]) Boolean",
+      "IndentedOperation": "                                GreaterThan: LookupPhyOp LogOp=GreaterThan LookupCols(0)('Customer'[First Name]) Boolean",
+      "Level": 8,
+      "RowNumber": 13,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "ColValue<'Customer'[First Name]>: LookupPhyOp LogOp=ColValue<'Customer'[First Name]>'Customer'[First Name] LookupCols(0)('Customer'[First Name]) String",
+      "IndentedOperation": "                                    ColValue<'Customer'[First Name]>: LookupPhyOp LogOp=ColValue<'Customer'[First Name]>'Customer'[First Name] LookupCols(0)('Customer'[First Name]) String",
+      "Level": 9,
+      "RowNumber": 14,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Constant: LookupPhyOp LogOp=Constant String Bob",
+      "IndentedOperation": "                                    Constant: LookupPhyOp LogOp=Constant String Bob",
+      "Level": 9,
+      "RowNumber": 15,
+      "NextSiblingRowNumber": 16,
+      "HighlightRow": false
+    }
+  ],
+  "LogicalQueryPlanRows": [
+    {
+      "Operation": "AddColumns: RelLogOp DependOnCols()() 0-0 RequiredCols(0)(''[Filtered Margin])",
+      "IndentedOperation": "AddColumns: RelLogOp DependOnCols()() 0-0 RequiredCols(0)(''[Filtered Margin])",
+      "Level": 0,
+      "RowNumber": 1,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Calculate: ScaLogOp MeasureRef=[Filtered Margin] DependOnCols()() Currency DominantValue=BLANK",
+      "IndentedOperation": "    Calculate: ScaLogOp MeasureRef=[Filtered Margin] DependOnCols()() Currency DominantValue=BLANK",
+      "Level": 1,
+      "RowNumber": 2,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Sum_Vertipaq: ScaLogOp MeasureRef=[Internet Total Margin] DependOnCols()() Currency DominantValue=BLANK",
+      "IndentedOperation": "        Sum_Vertipaq: ScaLogOp MeasureRef=[Internet Total Margin] DependOnCols()() Currency DominantValue=BLANK",
+      "Level": 2,
+      "RowNumber": 3,
+      "NextSiblingRowNumber": 6,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols()() 2-115 RequiredCols(115)('Internet Sales'[Margin])",
+      "IndentedOperation": "            Scan_Vertipaq: RelLogOp DependOnCols()() 2-115 RequiredCols(115)('Internet Sales'[Margin])",
+      "Level": 3,
+      "RowNumber": 4,
+      "NextSiblingRowNumber": 4,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Internet Sales'[Margin]: ScaLogOp DependOnCols(115)('Internet Sales'[Margin]) Currency DominantValue=NONE",
+      "IndentedOperation": "            'Internet Sales'[Margin]: ScaLogOp DependOnCols(115)('Internet Sales'[Margin]) Currency DominantValue=NONE",
+      "Level": 3,
+      "RowNumber": 5,
+      "NextSiblingRowNumber": 5,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Filter: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])",
+      "IndentedOperation": "        Filter: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])",
+      "Level": 2,
+      "RowNumber": 6,
+      "NextSiblingRowNumber": 11,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])",
+      "IndentedOperation": "            Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])",
+      "Level": 3,
+      "RowNumber": 7,
+      "NextSiblingRowNumber": 7,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "GreaterThan: ScaLogOp DependOnCols(0)('Customer'[First Name]) Boolean DominantValue=NONE",
+      "IndentedOperation": "            GreaterThan: ScaLogOp DependOnCols(0)('Customer'[First Name]) Boolean DominantValue=NONE",
+      "Level": 3,
+      "RowNumber": 8,
+      "NextSiblingRowNumber": 11,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Customer'[First Name]: ScaLogOp DependOnCols(0)('Customer'[First Name]) String DominantValue=NONE",
+      "IndentedOperation": "                'Customer'[First Name]: ScaLogOp DependOnCols(0)('Customer'[First Name]) String DominantValue=NONE",
+      "Level": 4,
+      "RowNumber": 9,
+      "NextSiblingRowNumber": 9,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Constant: ScaLogOp DependOnCols()() String DominantValue=Bob",
+      "IndentedOperation": "                Constant: ScaLogOp DependOnCols()() String DominantValue=Bob",
+      "Level": 4,
+      "RowNumber": 10,
+      "NextSiblingRowNumber": 10,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Filter_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])",
+      "IndentedOperation": "        Filter_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])",
+      "Level": 2,
+      "RowNumber": 11,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])",
+      "IndentedOperation": "            Scan_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])",
+      "Level": 3,
+      "RowNumber": 12,
+      "NextSiblingRowNumber": 12,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Product'[Color] <> Black: ScaLogOp DependOnCols(1)('Product'[Color]) Boolean DominantValue=false",
+      "IndentedOperation": "            'Product'[Color] <> Black: ScaLogOp DependOnCols(1)('Product'[Color]) Boolean DominantValue=false",
+      "Level": 3,
+      "RowNumber": 13,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    }
+  ],
+  "ActivityID": "4D250649-6642-40E9-9E75-EB9FCB0A9490",
+  "RequestID": "771D26B8-5C12-46DE-A11B-E18C4B7E8B55",
+  "CommandText": "DEFINE MEASURE 'Internet Sales'[Filtered Margin] = \n\t(/* USER DAX BEGIN */\nCALCULATE([Internet Total Margin], Customer[First Name] > \"Bob\", 'Product'[Color] <> \"Black\")\n/* USER DAX END */)\n\nEVALUATE\n\tROW(\n\t\"Filtered Margin\", 'Internet Sales'[Filtered Margin]\n)",
+  "Parameters": null,
+  "StartDatetime": "2025-12-23T16:13:01.606667-05:00"
+}

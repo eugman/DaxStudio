@@ -142,6 +142,7 @@
     <Compile Include="VisualQueryPlan\ColumnNameResolverTests.cs" />
     <Compile Include="VisualQueryPlan\PerformanceIssueDetectorTests.cs" />
     <Compile Include="VisualQueryPlan\PlanEnrichmentServiceTests.cs" />
+    <Compile Include="VisualQueryPlan\PlanNodeViewModelTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ADOTabular\DaxStudio.ADOTabular.csproj">

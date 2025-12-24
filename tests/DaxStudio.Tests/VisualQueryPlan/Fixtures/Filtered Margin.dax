@@ -1,0 +1,10 @@
+﻿// DAX Query
+DEFINE MEASURE 'Internet Sales'[Filtered Margin] = 
+	(/* USER DAX BEGIN */
+CALCULATE([Internet Total Margin], Customer[First Name] > "Bob", 'Product'[Color] <> "Black")
+/* USER DAX END */)
+
+EVALUATE
+	ROW(
+	"Filtered Margin", 'Internet Sales'[Filtered Margin]
+)
