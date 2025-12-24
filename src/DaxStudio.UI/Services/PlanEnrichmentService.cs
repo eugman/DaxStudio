@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using DaxStudio.Common.Enums;
 using DaxStudio.QueryTrace;
 using DaxStudio.UI.Model;
 using DaxStudio.UI.ViewModels;
@@ -222,26 +224,97 @@ namespace DaxStudio.UI.Services
 
         private void CorrelateTimingData(EnrichedQueryPlan plan, List<TraceStorageEngineEvent> timingEvents)
         {
+            // DEBUG: Entry point - REMOVE BEFORE RELEASE
+            Log.Information(">>> PlanEnrichmentService.CorrelateTimingData() ENTRY - TimingEvents={Count}", timingEvents?.Count ?? 0);
+
+            if (timingEvents == null || timingEvents.Count == 0)
+            {
+                Log.Information(">>> PlanEnrichmentService: No timing events to correlate - RETURNING EARLY");
+                return;
+            }
+
             // Aggregate timing data from storage engine events
             long totalSeDuration = 0;
             long totalSeCpu = 0;
             int cacheHits = 0;
 
-            foreach (var evt in timingEvents)
+            // Build lookup of Scan_Vertipaq nodes by table name for matching
+            // Operations look like: "Scan_Vertipaq: ... ('Customer'[First Name]) ..."
+            var scanNodesByTable = new Dictionary<string, EnrichedPlanNode>(StringComparer.OrdinalIgnoreCase);
+            foreach (var node in plan.AllNodes.Where(n => n.Operation != null && n.Operation.Contains("Scan_Vertipaq")))
             {
-                if (evt.Duration.HasValue)
+                var tableName = ExtractTableNameFromOperation(node.Operation);
+                if (!string.IsNullOrEmpty(tableName) && !scanNodesByTable.ContainsKey(tableName))
                 {
-                    totalSeDuration += evt.Duration.Value;
+                    scanNodesByTable[tableName] = node;
+                    Log.Debug(">>> PlanEnrichmentService: Mapped table '{Table}' to node {NodeId}", tableName, node.NodeId);
                 }
-                if (evt.CpuTime.HasValue)
+            }
+
+            Log.Information(">>> PlanEnrichmentService: Built table lookup with {Count} entries: [{Tables}]",
+                scanNodesByTable.Count, string.Join(", ", scanNodesByTable.Keys));
+
+            // Process non-internal events first (they have EstimatedRows)
+            var userEvents = timingEvents.Where(e => !e.IsInternalEvent).ToList();
+            var internalEvents = timingEvents.Where(e => e.IsInternalEvent).ToList();
+
+            Log.Information(">>> PlanEnrichmentService: {UserCount} user events, {InternalCount} internal events",
+                userEvents.Count, internalEvents.Count);
+
+            // Match user events to scan nodes by ObjectName
+            foreach (var evt in userEvents)
+            {
+                if (evt.Duration.HasValue) totalSeDuration += evt.Duration.Value;
+                if (evt.CpuTime.HasValue) totalSeCpu += evt.CpuTime.Value;
+
+                bool isCacheHit = evt.Subclass == DaxStudioTraceEventSubclass.VertiPaqCacheExactMatch;
+                if (isCacheHit) cacheHits++;
+
+                // Match by ObjectName to Scan_Vertipaq nodes
+                if (!string.IsNullOrEmpty(evt.ObjectName) && scanNodesByTable.TryGetValue(evt.ObjectName, out var node))
                 {
-                    totalSeCpu += evt.CpuTime.Value;
+                    Log.Information(">>> PlanEnrichmentService: MATCHED event '{ObjectName}' to node {NodeId}", evt.ObjectName, node.NodeId);
+
+                    // Populate xmSQL data
+                    node.XmSql = evt.TextData ?? evt.Query;
+                    node.ResolvedXmSql = evt.Query ?? evt.TextData;
+                    node.DurationMs = evt.Duration;
+                    node.CpuTimeMs = evt.CpuTime;
+                    node.EstimatedRows = evt.EstimatedRows;
+                    node.EstimatedKBytes = evt.EstimatedKBytes;
+                    node.IsCacheHit = isCacheHit;
+                    node.EngineType = EngineType.StorageEngine;
+                    node.ObjectName = evt.ObjectName;
+
+                    // RECONCILE ROW COUNTS: Use EstimatedRows from server timing when plan shows 0
+                    if ((!node.Records.HasValue || node.Records == 0) && evt.EstimatedRows.HasValue && evt.EstimatedRows > 0)
+                    {
+                        node.Records = evt.EstimatedRows;
+                        node.RecordsSource = "ServerTiming";
+                        Log.Information(">>> PlanEnrichmentService: Reconciled node {NodeId} records from 0 to {NewValue} (from server timing)",
+                            node.NodeId, evt.EstimatedRows);
+                    }
+
+                    // CALCULATE PARALLELISM: Duration / NetParallelDuration
+                    if (evt.Duration.HasValue && evt.NetParallelDuration.HasValue && evt.NetParallelDuration > 0)
+                    {
+                        node.NetParallelDurationMs = evt.NetParallelDuration;
+                        node.Parallelism = (int)Math.Max(1, Math.Round((double)evt.Duration.Value / evt.NetParallelDuration.Value));
+                        Log.Information(">>> PlanEnrichmentService: Node {NodeId} parallelism = x{Parallelism}",
+                            node.NodeId, node.Parallelism);
+                    }
                 }
-                // Check for cache hits based on subclass
-                if (evt.Subclass == DaxStudioTraceEventSubclass.VertiPaqCacheExactMatch)
+                else
                 {
-                    cacheHits++;
+                    Log.Debug(">>> PlanEnrichmentService: No node match for event ObjectName='{ObjectName}'", evt.ObjectName ?? "(null)");
                 }
+            }
+
+            // Still aggregate timing from internal events (don't match to nodes)
+            foreach (var evt in internalEvents)
+            {
+                if (evt.Duration.HasValue) totalSeDuration += evt.Duration.Value;
+                if (evt.CpuTime.HasValue) totalSeCpu += evt.CpuTime.Value;
             }
 
             plan.StorageEngineDurationMs = totalSeDuration;
@@ -253,6 +326,29 @@ namespace DaxStudio.UI.Services
             {
                 plan.FormulaEngineDurationMs = Math.Max(0, plan.TotalDurationMs - totalSeDuration);
             }
+
+            Log.Information(">>> PlanEnrichmentService: Correlation complete. SE duration={SeDuration}ms, Cache hits={CacheHits}",
+                totalSeDuration, cacheHits);
+        }
+
+        /// <summary>
+        /// Extracts the table name from an operation string.
+        /// Examples:
+        ///   "Scan_Vertipaq: ... ('Customer'[First Name]) ..." → "Customer"
+        ///   "Spool_Iterator: ... IterCols(0)('Internet Sales'[Margin]) ..." → "Internet Sales"
+        /// </summary>
+        private string ExtractTableNameFromOperation(string operation)
+        {
+            if (string.IsNullOrEmpty(operation)) return null;
+
+            // Match 'TableName'[ColumnName] pattern
+            var match = Regex.Match(operation, @"'([^']+)'\s*\[");
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+
+            return null;
         }
 
         private void CalculateCostPercentages(EnrichedQueryPlan plan)
@@ -288,6 +384,105 @@ namespace DaxStudio.UI.Services
                     node.EngineType = EngineType.FormulaEngine;
                 }
             }
+        }
+
+        /// <summary>
+        /// Cross-references logical plan nodes with physical plan nodes to infer
+        /// engine types and row counts for logical nodes that have no direct metrics.
+        /// </summary>
+        public void CrossReferenceLogicalWithPhysical(EnrichedQueryPlan logicalPlan, EnrichedQueryPlan physicalPlan)
+        {
+            if (logicalPlan?.AllNodes == null || physicalPlan?.AllNodes == null)
+            {
+                Log.Debug("PlanEnrichmentService: Cannot cross-reference - one or both plans are null");
+                return;
+            }
+
+            Log.Debug("PlanEnrichmentService: Cross-referencing {LogicalCount} logical nodes with {PhysicalCount} physical nodes",
+                logicalPlan.AllNodes.Count, physicalPlan.AllNodes.Count);
+
+            // Build lookup of physical nodes by operation pattern
+            var physicalByPattern = new Dictionary<string, EnrichedPlanNode>();
+            foreach (var physNode in physicalPlan.AllNodes.Where(n => n.EngineType != EngineType.Unknown))
+            {
+                var key = ExtractOperatorKey(physNode.Operation);
+                if (!string.IsNullOrEmpty(key) && !physicalByPattern.ContainsKey(key))
+                {
+                    physicalByPattern[key] = physNode;
+                }
+            }
+
+            int matchedNodes = 0;
+            foreach (var logicalNode in logicalPlan.AllNodes)
+            {
+                var key = ExtractOperatorKey(logicalNode.Operation);
+                if (!string.IsNullOrEmpty(key) && physicalByPattern.TryGetValue(key, out var physicalNode))
+                {
+                    // Inherit engine type from matching physical node
+                    if (logicalNode.EngineType == EngineType.Unknown)
+                    {
+                        logicalNode.EngineType = physicalNode.EngineType;
+                    }
+
+                    // Inherit row counts if logical has none
+                    if ((!logicalNode.Records.HasValue || logicalNode.Records == 0) &&
+                        physicalNode.Records.HasValue && physicalNode.Records > 0)
+                    {
+                        logicalNode.Records = physicalNode.Records;
+                        logicalNode.RecordsSource = "Physical";
+                    }
+
+                    // Inherit timing data if available
+                    if (!logicalNode.DurationMs.HasValue && physicalNode.DurationMs.HasValue)
+                    {
+                        logicalNode.DurationMs = physicalNode.DurationMs;
+                        logicalNode.CpuTimeMs = physicalNode.CpuTimeMs;
+                        logicalNode.Parallelism = physicalNode.Parallelism;
+                    }
+
+                    // Inherit xmSQL if available
+                    if (string.IsNullOrEmpty(logicalNode.XmSql) && !string.IsNullOrEmpty(physicalNode.XmSql))
+                    {
+                        logicalNode.XmSql = physicalNode.XmSql;
+                        logicalNode.ResolvedXmSql = physicalNode.ResolvedXmSql;
+                    }
+
+                    matchedNodes++;
+                }
+            }
+
+            Log.Debug("PlanEnrichmentService: Cross-reference matched {MatchedCount} logical nodes with physical nodes",
+                matchedNodes);
+        }
+
+        /// <summary>
+        /// Extracts a key pattern from an operation string for matching between logical and physical plans.
+        /// </summary>
+        private string ExtractOperatorKey(string operation)
+        {
+            if (string.IsNullOrEmpty(operation)) return string.Empty;
+
+            // Extract key patterns: "Sum_Vertipaq", "Scan_Vertipaq", "GroupBy_Vertipaq", etc.
+            var match = Regex.Match(operation, @"(\w+_Vertipaq|\w+LogOp|\w+PhyOp)", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                return match.Value.ToUpperInvariant();
+            }
+
+            // Fall back to first word before colon or space
+            var colonIndex = operation.IndexOf(':');
+            if (colonIndex > 0)
+            {
+                return operation.Substring(0, colonIndex).Trim().ToUpperInvariant();
+            }
+
+            var spaceIndex = operation.IndexOf(' ');
+            if (spaceIndex > 0)
+            {
+                return operation.Substring(0, spaceIndex).Trim().ToUpperInvariant();
+            }
+
+            return operation.Trim().ToUpperInvariant();
         }
     }
 }

@@ -36,5 +36,13 @@ namespace DaxStudio.UI.Services
             IEnumerable<LogicalQueryPlanRow> rawPlan,
             IColumnNameResolver columnResolver,
             string activityId);
+
+        /// <summary>
+        /// Cross-references logical plan nodes with physical plan nodes to infer
+        /// engine types and row counts for logical nodes that have no direct metrics.
+        /// </summary>
+        /// <param name="logicalPlan">The logical plan to enrich</param>
+        /// <param name="physicalPlan">The physical plan to cross-reference against</param>
+        void CrossReferenceLogicalWithPhysical(EnrichedQueryPlan logicalPlan, EnrichedQueryPlan physicalPlan);
     }
 }
