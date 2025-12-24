@@ -39,9 +39,24 @@ namespace DaxStudio.UI.Model
         public long? Records { get; set; }
 
         /// <summary>
+        /// Source of the Records value: "Plan" (from #Records=), "ServerTiming" (from xmSQL), or "Physical" (inferred from physical plan).
+        /// </summary>
+        public string RecordsSource { get; set; } = "Plan";
+
+        /// <summary>
         /// Operation duration in milliseconds (from trace correlation).
         /// </summary>
         public long? DurationMs { get; set; }
+
+        /// <summary>
+        /// Net parallel duration in milliseconds (adjusted for multi-threading).
+        /// </summary>
+        public long? NetParallelDurationMs { get; set; }
+
+        /// <summary>
+        /// Parallelism factor (number of threads used). Calculated as Duration / NetParallelDuration.
+        /// </summary>
+        public int? Parallelism { get; set; }
 
         /// <summary>
         /// CPU time in milliseconds (from trace correlation).
@@ -67,6 +82,26 @@ namespace DaxStudio.UI.Model
         /// Referenced table or column name, if applicable.
         /// </summary>
         public string ObjectName { get; set; }
+
+        /// <summary>
+        /// The xmSQL query sent to the storage engine (if this is a SE operation).
+        /// </summary>
+        public string XmSql { get; set; }
+
+        /// <summary>
+        /// The resolved xmSQL with column IDs replaced by names.
+        /// </summary>
+        public string ResolvedXmSql { get; set; }
+
+        /// <summary>
+        /// Estimated number of rows from the SE query (from server timing).
+        /// </summary>
+        public long? EstimatedRows { get; set; }
+
+        /// <summary>
+        /// Estimated size in KB (from server timing).
+        /// </summary>
+        public long? EstimatedKBytes { get; set; }
 
         /// <summary>
         /// Parent node reference.
