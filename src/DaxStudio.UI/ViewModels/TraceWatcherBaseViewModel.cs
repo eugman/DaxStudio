@@ -586,6 +586,11 @@ namespace DaxStudio.UI.ViewModels
                 var monitoredEvents = GetMonitoredEvents();
                 var validEventsForConnection = monitoredEvents.Where(e => supportedEvents.ContainsKey(e)).ToList();
 
+                Log.Information("{class} {method} Requested events: [{RequestedEvents}], Valid events: [{ValidEvents}]",
+                    GetSubclassName(), nameof(CreateTracer),
+                    string.Join(", ", monitoredEvents),
+                    string.Join(", ", validEventsForConnection));
+
                 if (_tracer == null) // && _connection.Type != AdomdType.Excel)
                 {
                     if (Connection.IsPowerPivot)
@@ -631,11 +636,14 @@ namespace DaxStudio.UI.ViewModels
 
         private void TracerOnTraceEvent(object sender, DaxStudioTraceEventArgs e)
         {
+            Log.Debug("{class} {method} Received event: {EventClass}", GetSubclassName(), nameof(TracerOnTraceEvent), e.EventClass);
+
             if (!GetMonitoredEvents().Contains(e.EventClass)) return;
             if (ShouldStartCapturing(e)) CapturingStarted = true;
             if (!CapturingStarted) return;
             if (IsPaused) return;
 
+            Log.Debug("{class} {method} Enqueuing event: {EventClass}", GetSubclassName(), nameof(TracerOnTraceEvent), e.EventClass);
             Events.Enqueue(e);
             Execute.OnUIThread(() =>
             {

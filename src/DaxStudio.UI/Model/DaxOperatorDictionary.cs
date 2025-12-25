@@ -760,6 +760,26 @@ namespace DaxStudio.UI.Model
         /// <returns>Human-readable name or the original name if not found</returns>
         public static string GetDisplayName(string operatorName)
         {
+            // Special handling for ColValue and ColPosition - extract and display the column reference
+            if (operatorName != null &&
+                (operatorName.StartsWith("ColValue<", System.StringComparison.Ordinal) ||
+                 operatorName.StartsWith("ColPosition<", System.StringComparison.Ordinal)))
+            {
+                var startIdx = operatorName.IndexOf('<') + 1;
+                var endIdx = operatorName.LastIndexOf('>');
+                if (startIdx > 0 && endIdx > startIdx)
+                {
+                    var columnRef = operatorName.Substring(startIdx, endIdx - startIdx);
+                    // Clean up the column reference - strip empty table name prefix
+                    if (columnRef.StartsWith("''["))
+                    {
+                        columnRef = columnRef.Substring(2); // Remove '' prefix, keep [Column]
+                    }
+                    var prefix = operatorName.StartsWith("ColValue") ? "Column Value" : "Column Position";
+                    return $"{prefix}: {columnRef}";
+                }
+            }
+
             var info = GetOperatorInfo(operatorName);
             return info?.DisplayName ?? FormatUnknownOperator(operatorName);
         }

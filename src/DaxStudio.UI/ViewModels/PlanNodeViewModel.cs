@@ -576,16 +576,36 @@ namespace DaxStudio.UI.ViewModels
         public bool HasDuration => _node.DurationMs.HasValue;
 
         /// <summary>
-        /// Whether any performance metrics are available (rows, duration, CPU time, data size, cost).
-        /// Used to hide the entire PERFORMANCE METRICS section when no data exists.
+        /// Whether any performance metrics are available (rows, duration, CPU time, data size).
+        /// Used to show any row-related info.
         /// </summary>
         public bool HasAnyPerformanceMetrics =>
             _node.Records.HasValue ||
             _node.DurationMs.HasValue ||
             _node.CpuTimeMs.HasValue ||
             _node.NetParallelDurationMs.HasValue ||
-            _node.EstimatedKBytes.HasValue ||
-            _node.CostPercentage.HasValue;
+            _node.EstimatedKBytes.HasValue;
+
+        /// <summary>
+        /// Whether we have detailed performance metrics beyond just row count.
+        /// When true, show the full PERFORMANCE METRICS section with header.
+        /// </summary>
+        public bool HasDetailedPerformanceMetrics =>
+            _node.DurationMs.HasValue ||
+            _node.CpuTimeMs.HasValue ||
+            _node.NetParallelDurationMs.HasValue ||
+            _node.EstimatedKBytes.HasValue;
+
+        /// <summary>
+        /// Whether we only have row count (no other metrics).
+        /// When true, show just the row count inline without header.
+        /// </summary>
+        public bool HasOnlyRowCount =>
+            _node.Records.HasValue &&
+            !_node.DurationMs.HasValue &&
+            !_node.CpuTimeMs.HasValue &&
+            !_node.NetParallelDurationMs.HasValue &&
+            !_node.EstimatedKBytes.HasValue;
 
         /// <summary>
         /// Row number in the query plan.
@@ -691,18 +711,35 @@ namespace DaxStudio.UI.ViewModels
         /// <summary>
         /// Formatted row count with commas for edge tooltip display.
         /// When a SpoolLookup/Spool_Iterator pair is folded, shows the row range (e.g., "1-11 rows").
+        /// Includes duration in ms when timing data is correlated.
         /// </summary>
         public string RowsDisplayFormatted
         {
             get
             {
+                var parts = new List<string>();
+
+                // Add duration if we have correlated timing data
+                if (_node.DurationMs.HasValue)
+                {
+                    parts.Add($"{_node.DurationMs.Value:N0}ms");
+                }
+
                 // Show row range if SpoolLookup was folded with Spool_Iterator
                 if (HasRowRange)
-                    return RowRangeDisplay;
-
-                if (!_node.Records.HasValue)
+                {
+                    parts.Add(RowRangeDisplay);
+                }
+                else if (_node.Records.HasValue)
+                {
+                    parts.Add($"{_node.Records.Value:N0} rows");
+                }
+                else if (parts.Count == 0)
+                {
                     return "No row count";
-                return $"{_node.Records.Value:N0} rows";
+                }
+
+                return string.Join(", ", parts);
             }
         }
 
@@ -1187,7 +1224,7 @@ namespace DaxStudio.UI.ViewModels
         }
 
         /// <summary>
-        /// Engine badge background color.
+        /// Engine badge background color (matches Server Timings: SE=blue, FE=orange).
         /// </summary>
         public Brush EngineBadgeBackground
         {
@@ -1195,17 +1232,40 @@ namespace DaxStudio.UI.ViewModels
             {
                 return _node.EngineType switch
                 {
-                    EngineType.StorageEngine => new SolidColorBrush(Color.FromRgb(76, 175, 80)),   // Green
-                    EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(156, 39, 176)), // Purple
+                    EngineType.StorageEngine => new SolidColorBrush(Color.FromRgb(95, 142, 214)),  // Blue (#5F8ED6)
+                    EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(254, 187, 76)), // Orange (#FEBB4C)
                     _ => new SolidColorBrush(Color.FromRgb(158, 158, 158))                         // Gray
                 };
             }
         }
 
         /// <summary>
-        /// Engine badge foreground (text) color.
+        /// WCAG AAA compliant text color for SE values on grey background (#F3F2F1).
+        /// Dark blue with 7:1+ contrast ratio.
         /// </summary>
-        public Brush EngineBadgeForeground => Brushes.White;
+        public static Brush StorageEngineTextBrush => new SolidColorBrush(Color.FromRgb(30, 58, 138));  // #1E3A8A
+
+        /// <summary>
+        /// WCAG AAA compliant text color for FE values on grey background (#F3F2F1).
+        /// Dark orange with 7:1+ contrast ratio.
+        /// </summary>
+        public static Brush FormulaEngineTextBrush => new SolidColorBrush(Color.FromRgb(154, 52, 18));  // #9A3412
+
+        /// <summary>
+        /// Engine badge foreground (text) color.
+        /// White for SE (dark blue bg), dark for FE (light orange bg).
+        /// </summary>
+        public Brush EngineBadgeForeground
+        {
+            get
+            {
+                return _node.EngineType switch
+                {
+                    EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(120, 53, 15)), // Dark brown for orange bg
+                    _ => Brushes.White  // White for blue/gray backgrounds
+                };
+            }
+        }
 
         #endregion
 
@@ -1399,26 +1459,17 @@ namespace DaxStudio.UI.ViewModels
 
         /// <summary>
         /// Background color - subtle shading based on engine type.
-        /// Only highlight nodes with issues, otherwise use neutral colors.
+        /// Issues are indicated by the ⚠️ emoji and color-coded row counts, not background color.
         /// </summary>
         public Brush BackgroundBrush
         {
             get
             {
-                if (HasIssues)
-                {
-                    // Subtle highlight for nodes with issues
-                    var severity = Issues.Max(i => i.Severity);
-                    return severity == IssueSeverity.Error
-                        ? new SolidColorBrush(Color.FromRgb(255, 235, 235))  // Very light red
-                        : new SolidColorBrush(Color.FromRgb(255, 245, 230)); // Very light orange
-                }
-
-                // Subtle engine-based background - much lighter than before
+                // Subtle engine-based background - matches Server Timings colors
                 return EngineType switch
                 {
-                    EngineType.StorageEngine => new SolidColorBrush(Color.FromRgb(245, 250, 245)), // Very light green tint
-                    EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(250, 248, 252)), // Very light purple tint
+                    EngineType.StorageEngine => new SolidColorBrush(Color.FromRgb(240, 247, 255)), // Very light blue tint
+                    EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(255, 250, 240)), // Very light orange tint
                     _ => new SolidColorBrush(Color.FromRgb(248, 248, 248))                          // Near white
                 };
             }
@@ -1436,11 +1487,11 @@ namespace DaxStudio.UI.ViewModels
                     return new SolidColorBrush(Color.FromRgb(0, 120, 215)); // Blue selection
                 }
 
-                // Subtle border based on engine type - much lighter than before
+                // Subtle border based on engine type - matches Server Timings colors
                 return EngineType switch
                 {
-                    EngineType.StorageEngine => new SolidColorBrush(Color.FromRgb(180, 200, 180)), // Light green-gray
-                    EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(200, 180, 200)), // Light purple-gray
+                    EngineType.StorageEngine => new SolidColorBrush(Color.FromRgb(180, 200, 220)), // Light blue-gray
+                    EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(220, 200, 180)), // Light orange-gray
                     _ => new SolidColorBrush(Color.FromRgb(200, 200, 200))                          // Light gray
                 };
             }
@@ -1608,6 +1659,23 @@ namespace DaxStudio.UI.ViewModels
         /// Whether this node has spool type info to display.
         /// </summary>
         public bool HasSpoolTypeInfo => !string.IsNullOrEmpty(SpoolTypeInfo);
+
+        /// <summary>
+        /// Stores operation text from collapsed proxy nodes (when proxy chains are flattened).
+        /// </summary>
+        public List<string> CollapsedProxyOperations { get; set; }
+
+        /// <summary>
+        /// Whether this node has collapsed proxy operations to display.
+        /// </summary>
+        public bool HasCollapsedProxyOperations => CollapsedProxyOperations?.Count > 0;
+
+        /// <summary>
+        /// Display text showing the count of collapsed proxy nodes.
+        /// </summary>
+        public string CollapsedProxyDisplay => HasCollapsedProxyOperations
+            ? $"({CollapsedProxyOperations.Count} intermediate proxy node{(CollapsedProxyOperations.Count > 1 ? "s" : "")} collapsed)"
+            : null;
 
         /// <summary>
         /// Column info for single-column Scan_Vertipaq nodes (e.g., "'Customer'[First Name]").
@@ -2066,10 +2134,11 @@ namespace DaxStudio.UI.ViewModels
                     continue;
 
                 var opName = GetOperatorNameFromString(node.Operation);
+                var normalizedOpName = NormalizeOperatorForGrouping(opName);
 
-                // Match Spool_Iterator, Spool_Iterator<...>, or SpoolLookup
-                var isSpoolIterator = opName == "Spool_Iterator" || opName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
-                var isSpoolLookup = opName == "SpoolLookup";
+                // Match Spool_Iterator, Spool_Iterator<...>, or SpoolLookup (with or without #N suffix)
+                var isSpoolIterator = normalizedOpName == "Spool_Iterator" || normalizedOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
+                var isSpoolLookup = normalizedOpName == "SpoolLookup";
 
                 if (isSpoolIterator || isSpoolLookup)
                 {
@@ -2183,7 +2252,8 @@ namespace DaxStudio.UI.ViewModels
                     while (ancestor != null)
                     {
                         var ancestorOpName = GetOperatorNameFromString(ancestor.Operation);
-                        if (ancestorOpName == "Spool_Iterator" || ancestorOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal))
+                        var normalizedAncestorOpName = NormalizeOperatorForGrouping(ancestorOpName);
+                        if (normalizedAncestorOpName == "Spool_Iterator" || normalizedAncestorOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal))
                         {
                             // Extract first column from IterCols
                             var match = ancestorIterColsPattern.Match(ancestor.Operation ?? "");
@@ -2201,11 +2271,12 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Eighth pass: Group nested Spool_Iterator chains with same #Records
-            // When a Spool_Iterator has exactly one non-folded child that is also a Spool_Iterator
-            // with the same #Records, fold the child into the parent.
+            // Eighth pass: Group nested Spool_Iterator chains (same or different #Records)
+            // When a Spool_Iterator has exactly one non-folded child that is also a Spool_Iterator,
+            // fold the child into the parent. Tracks row ranges for heterogeneous chains.
             var nestedSpoolDepths = new Dictionary<int, int>();
             var recordsPattern = new Regex(@"#Records=(\d+)", RegexOptions.Compiled);
+            var rowRanges = new Dictionary<int, (long min, long max)>(); // Track row ranges for folded chains
 
             // Helper function to find effective children (skipping folded nodes)
             List<EnrichedPlanNode> FindEffectiveChildren(EnrichedPlanNode node, HashSet<int> folded)
@@ -2238,7 +2309,8 @@ namespace DaxStudio.UI.ViewModels
                         continue;
 
                     var opName = GetOperatorNameFromString(node.Operation);
-                    var isSpoolIterator = opName == "Spool_Iterator" || opName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
+                    var normalizedOpName = NormalizeOperatorForGrouping(opName);
+                    var isSpoolIterator = normalizedOpName == "Spool_Iterator" || normalizedOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
 
                     if (!isSpoolIterator)
                         continue;
@@ -2257,20 +2329,44 @@ namespace DaxStudio.UI.ViewModels
                     {
                         var child = nonFoldedChildren[0];
                         var childOpName = GetOperatorNameFromString(child.Operation);
-                        var isChildSpoolIterator = childOpName == "Spool_Iterator" || childOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
+                        var normalizedChildOpName = NormalizeOperatorForGrouping(childOpName);
+                        var isChildSpoolIterator = normalizedChildOpName == "Spool_Iterator" || normalizedChildOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
 
                         if (isChildSpoolIterator)
                         {
                             var childRecordsMatch = recordsPattern.Match(child.Operation ?? "");
-                            if (childRecordsMatch.Success && childRecordsMatch.Groups[1].Value == nodeRecords)
+                            if (childRecordsMatch.Success && long.TryParse(childRecordsMatch.Groups[1].Value, out var childRecords) &&
+                                long.TryParse(nodeRecords, out var parentRecords))
                             {
-                                // Same #Records - fold child into parent
+                                // Fold child into parent (same or different #Records)
                                 foldedNodeIds.Add(child.NodeId);
 
                                 // Track the depth - inherit child's depth + 1
                                 var childDepth = nestedSpoolDepths.TryGetValue(child.NodeId, out var cd) ? cd : 1;
                                 var parentDepth = nestedSpoolDepths.TryGetValue(node.NodeId, out var pd) ? pd : 1;
                                 nestedSpoolDepths[node.NodeId] = parentDepth + childDepth;
+
+                                // Track row range - inherit from child if it has a range, otherwise compute
+                                var childMin = childRecords;
+                                var childMax = childRecords;
+                                if (rowRanges.TryGetValue(child.NodeId, out var childRange))
+                                {
+                                    childMin = childRange.min;
+                                    childMax = childRange.max;
+                                }
+
+                                var currentMin = parentRecords;
+                                var currentMax = parentRecords;
+                                if (rowRanges.TryGetValue(node.NodeId, out var currentRange))
+                                {
+                                    currentMin = currentRange.min;
+                                    currentMax = currentRange.max;
+                                }
+
+                                // Merge ranges - take overall min and max
+                                var newMin = Math.Min(currentMin, childMin);
+                                var newMax = Math.Max(currentMax, childMax);
+                                rowRanges[node.NodeId] = (newMin, newMax);
 
                                 // If child had spool type info, preserve it on parent
                                 if (spoolTypeInfos.TryGetValue(child.NodeId, out var childSpoolInfo) &&
@@ -2279,8 +2375,8 @@ namespace DaxStudio.UI.ViewModels
                                     spoolTypeInfos[node.NodeId] = childSpoolInfo;
                                 }
 
-                                Log.Debug(">>> BuildTree: Folded nested Spool_Iterator {ChildId} into {ParentId}, both have #Records={Records}, depth now {Depth}",
-                                    child.NodeId, node.NodeId, nodeRecords, nestedSpoolDepths[node.NodeId]);
+                                Log.Debug(">>> BuildTree: Folded nested Spool_Iterator {ChildId} into {ParentId}, row range {Min}-{Max}, depth now {Depth}",
+                                    child.NodeId, node.NodeId, newMin, newMax, nestedSpoolDepths[node.NodeId]);
 
                                 madeProgress = true;
                             }
@@ -2323,14 +2419,15 @@ namespace DaxStudio.UI.ViewModels
 
             // Tenth pass: SpoolLookup → Spool_Iterator folding with row range
             // When SpoolLookup (1 row) has a Spool_Iterator child (11 rows), fold and show "1-11 rows"
-            var rowRanges = new Dictionary<int, (long min, long max)>();
+            // Note: rowRanges is already declared before 8th pass
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
                     continue;
 
                 var opName = GetOperatorNameFromString(node.Operation);
-                if (opName != "SpoolLookup")
+                var normalizedOpName = NormalizeOperatorForGrouping(opName);
+                if (normalizedOpName != "SpoolLookup")
                     continue;
 
                 // Extract #Records from SpoolLookup
@@ -2345,7 +2442,8 @@ namespace DaxStudio.UI.ViewModels
 
                 var child = nonFoldedChildren[0];
                 var childOpName = GetOperatorNameFromString(child.Operation);
-                var isChildSpoolIterator = childOpName == "Spool_Iterator" || childOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
+                var normalizedChildOpName = NormalizeOperatorForGrouping(childOpName);
+                var isChildSpoolIterator = normalizedChildOpName == "Spool_Iterator" || normalizedChildOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
 
                 if (!isChildSpoolIterator)
                     continue;
@@ -2358,9 +2456,18 @@ namespace DaxStudio.UI.ViewModels
                 // Fold the Spool_Iterator into SpoolLookup
                 foldedNodeIds.Add(child.NodeId);
 
-                // Track the row range (min, max)
-                var minRecords = Math.Min(lookupRecords, childRecords);
-                var maxRecords = Math.Max(lookupRecords, childRecords);
+                // Inherit child's existing row range if present (from 8th pass folding)
+                var childMin = childRecords;
+                var childMax = childRecords;
+                if (rowRanges.TryGetValue(child.NodeId, out var childRange))
+                {
+                    childMin = childRange.min;
+                    childMax = childRange.max;
+                }
+
+                // Track the row range (min, max) - merge with lookup records
+                var minRecords = Math.Min(lookupRecords, childMin);
+                var maxRecords = Math.Max(lookupRecords, childMax);
                 rowRanges[node.NodeId] = (minRecords, maxRecords);
 
                 // If child had spool type info, preserve it on parent
@@ -2373,6 +2480,55 @@ namespace DaxStudio.UI.ViewModels
                 Log.Debug(">>> BuildTree: Folded Spool_Iterator {ChildId} into SpoolLookup {ParentId}, row range {Min}-{Max}",
                     child.NodeId, node.NodeId, minRecords, maxRecords);
             }
+
+            // Eleventh pass: Fold Proxy operators into their single child
+            // When a Proxy has exactly one non-folded child, fold the Proxy and transfer its info to the child
+            var collapsedProxyInfos = new Dictionary<int, List<string>>();
+            do
+            {
+                madeProgress = false;
+                foreach (var node in plan.AllNodes)
+                {
+                    if (foldedNodeIds.Contains(node.NodeId))
+                        continue;
+
+                    var opName = GetOperatorNameFromString(node.Operation);
+                    if (!opName.StartsWith("Proxy", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Find non-folded children
+                    var nonFoldedChildren = FindEffectiveChildren(node, foldedNodeIds);
+                    if (nonFoldedChildren.Count != 1)
+                        continue;
+
+                    var child = nonFoldedChildren[0];
+
+                    // Fold this Proxy into its child
+                    foldedNodeIds.Add(node.NodeId);
+
+                    // Transfer proxy operation info to child
+                    if (!collapsedProxyInfos.ContainsKey(child.NodeId))
+                    {
+                        collapsedProxyInfos[child.NodeId] = new List<string>();
+                    }
+                    collapsedProxyInfos[child.NodeId].Insert(0, node.Operation ?? opName);
+
+                    // Also transfer any proxy info this node had from previous folds
+                    if (collapsedProxyInfos.TryGetValue(node.NodeId, out var existingProxyInfo))
+                    {
+                        foreach (var info in existingProxyInfo)
+                        {
+                            collapsedProxyInfos[child.NodeId].Insert(0, info);
+                        }
+                        collapsedProxyInfos.Remove(node.NodeId);
+                    }
+
+                    Log.Debug(">>> BuildTree: Folded Proxy node {ProxyId} ({OpName}) into child {ChildId}",
+                        node.NodeId, opName, child.NodeId);
+
+                    madeProgress = true;
+                }
+            } while (madeProgress);
 
             // Create ViewModels for non-folded nodes only
             Log.Debug(">>> BuildTree: filterPredicateExpressions has {Count} entries", filterPredicateExpressions.Count);
@@ -2437,6 +2593,14 @@ namespace DaxStudio.UI.ViewModels
                         vm.SpoolRowRangeMax = rowRange.max;
                         Log.Debug(">>> BuildTree: Set row range on VM {NodeId}: {Min}-{Max}",
                             node.NodeId, rowRange.min, rowRange.max);
+                    }
+
+                    // Set collapsed proxy operations if Proxy nodes were folded into this node
+                    if (collapsedProxyInfos.TryGetValue(node.NodeId, out var proxyOps))
+                    {
+                        vm.CollapsedProxyOperations = proxyOps;
+                        Log.Debug(">>> BuildTree: Set collapsed proxy operations on VM {NodeId}: {Count} proxies",
+                            node.NodeId, proxyOps.Count);
                     }
 
                     nodeMap[node.NodeId] = vm;
@@ -2720,6 +2884,37 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
             return -1;
+        }
+
+        /// <summary>
+        /// Normalizes an operator name by stripping trailing instance numbers (e.g., #1, #2).
+        /// This allows grouping operators like Spool_Iterator#1 and Spool_Iterator#2 together,
+        /// or Spool#1 and Spool#2 together.
+        /// Examples:
+        ///   "Spool_Iterator#1" -> "Spool_Iterator"
+        ///   "Spool_Iterator&lt;Sum&gt;#2" -> "Spool_Iterator&lt;Sum&gt;"
+        ///   "SpoolLookup#3" -> "SpoolLookup"
+        ///   "Spool#1" -> "Spool"
+        ///   "AggregationSpool&lt;Sum&gt;#4" -> "AggregationSpool&lt;Sum&gt;"
+        /// </summary>
+        private static string NormalizeOperatorForGrouping(string opName)
+        {
+            if (string.IsNullOrEmpty(opName))
+                return opName;
+
+            // Strip trailing #N suffix (e.g., "Spool_Iterator#1" -> "Spool_Iterator")
+            var hashIndex = opName.LastIndexOf('#');
+            if (hashIndex > 0)
+            {
+                // Verify what follows # is numeric
+                var suffix = opName.Substring(hashIndex + 1);
+                if (int.TryParse(suffix, out _))
+                {
+                    return opName.Substring(0, hashIndex);
+                }
+            }
+
+            return opName;
         }
 
         /// <summary>

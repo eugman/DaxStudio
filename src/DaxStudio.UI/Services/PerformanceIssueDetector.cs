@@ -128,6 +128,11 @@ namespace DaxStudio.UI.Services
             if (!rowCount.HasValue)
                 return;
 
+            // Skip if this node will be folded into its parent (same spool operator type with same #Records)
+            // This prevents duplicate issues for nested spool chains
+            if (WillBeFoldedIntoParent(node, rowCount.Value))
+                return;
+
             if (rowCount.Value >= Settings.ExcessiveMaterializationErrorThreshold)
             {
                 issues.Add(new PerformanceIssue
@@ -310,6 +315,79 @@ namespace DaxStudio.UI.Services
                     Threshold = (long)(seQueries * Settings.LowCacheHitRatioThreshold)
                 });
             }
+        }
+
+        /// <summary>
+        /// Checks if a node will be folded into an ancestor during tree building.
+        /// This is used to prevent duplicate issues for nodes in spool chains.
+        /// Walks up the ancestor chain because intermediate nodes (AggregationSpool, etc.) get folded first.
+        /// </summary>
+        private bool WillBeFoldedIntoParent(EnrichedPlanNode node, long rowCount)
+        {
+            if (node.Parent == null)
+                return false;
+
+            // Check if this is a spool iterator
+            var opName = GetNormalizedOperatorName(node.Operation);
+            if (!IsSpoolIterator(opName))
+                return false;
+
+            // Walk up ancestors to find a spool iterator (intermediate nodes like AggregationSpool get folded)
+            var ancestor = node.Parent;
+            while (ancestor != null)
+            {
+                var ancestorOpName = GetNormalizedOperatorName(ancestor.Operation);
+
+                // Check if we hit a spool iterator ancestor
+                if (IsSpoolIterator(ancestorOpName))
+                {
+                    // Spool_Iterator chains are now folded regardless of row count
+                    // Both same and different row counts get folded together (with row range display)
+                    return true;
+                }
+
+                // Check if this is a spool type that will be folded (AggregationSpool, ProjectionSpool, etc.)
+                // These intermediate nodes get folded, so continue up the chain
+                if (ancestorOpName.Contains("Spool<") || ancestorOpName.EndsWith("Spool"))
+                {
+                    ancestor = ancestor.Parent;
+                    continue;
+                }
+
+                // Hit a non-spool ancestor - not folded
+                return false;
+            }
+
+            return false;
+        }
+
+        private static string GetNormalizedOperatorName(string operation)
+        {
+            if (string.IsNullOrEmpty(operation))
+                return string.Empty;
+
+            var colonIndex = operation.IndexOf(':');
+            var opName = colonIndex > 0 ? operation.Substring(0, colonIndex).Trim() : operation;
+
+            // Strip trailing #N suffix (e.g., "Spool_Iterator#1" -> "Spool_Iterator")
+            var hashIndex = opName.LastIndexOf('#');
+            if (hashIndex > 0)
+            {
+                var suffix = opName.Substring(hashIndex + 1);
+                if (int.TryParse(suffix, out _))
+                {
+                    opName = opName.Substring(0, hashIndex);
+                }
+            }
+
+            return opName;
+        }
+
+        private static bool IsSpoolIterator(string opName)
+        {
+            return opName == "Spool_Iterator" ||
+                   opName.StartsWith("Spool_Iterator<", StringComparison.Ordinal) ||
+                   opName == "SpoolLookup";
         }
     }
 }

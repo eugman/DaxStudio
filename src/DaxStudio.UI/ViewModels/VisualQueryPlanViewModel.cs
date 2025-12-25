@@ -45,25 +45,52 @@ namespace DaxStudio.UI.ViewModels
         private double _zoomLevel = 1.0;
         private int _selectedTabIndex = 0;
 
-        // Collect SE events in real-time as they arrive via ProcessSingleEvent
-        // This ensures we capture them before ProcessResults is triggered by QueryEnd
-        private readonly List<TraceStorageEngineEvent> _realtimeSeEvents = new List<TraceStorageEngineEvent>();
-        private readonly object _seEventsLock = new object();
-
         /// <summary>
         /// Event raised after the plan layout is updated, allowing the view to adjust scroll position.
         /// </summary>
         public event System.EventHandler PlanLayoutUpdated;
 
         /// <summary>
-        /// Actual content width based on positioned nodes (not Canvas fixed size).
+        /// Minimum canvas size to ensure scrollbars are available for panning.
         /// </summary>
-        public double ActualContentWidth { get; private set; }
+        private const double MinCanvasSize = 800;
+
+        private double _actualContentWidth = MinCanvasSize;
+        private double _actualContentHeight = MinCanvasSize;
 
         /// <summary>
-        /// Actual content height based on positioned nodes (not Canvas fixed size).
+        /// Actual content width based on positioned nodes (with minimum for panning).
         /// </summary>
-        public double ActualContentHeight { get; private set; }
+        public double ActualContentWidth
+        {
+            get => _actualContentWidth;
+            private set
+            {
+                var newValue = Math.Max(value, MinCanvasSize);
+                if (Math.Abs(_actualContentWidth - newValue) > 0.1)
+                {
+                    _actualContentWidth = newValue;
+                    NotifyOfPropertyChange();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Actual content height based on positioned nodes (with minimum for panning).
+        /// </summary>
+        public double ActualContentHeight
+        {
+            get => _actualContentHeight;
+            private set
+            {
+                var newValue = Math.Max(value, MinCanvasSize);
+                if (Math.Abs(_actualContentHeight - newValue) > 0.1)
+                {
+                    _actualContentHeight = newValue;
+                    NotifyOfPropertyChange();
+                }
+            }
+        }
 
         [ImportingConstructor]
         public VisualQueryPlanViewModel(
@@ -174,11 +201,10 @@ namespace DaxStudio.UI.ViewModels
 
                     _selectedIssue = value;
 
-                    // Select new issue and highlight its node
+                    // Select new issue (but don't auto-navigate - user must click "Go to Node")
                     if (_selectedIssue != null)
                     {
                         _selectedIssue.IsSelected = true;
-                        NavigateToIssue(_selectedIssue);
                     }
 
                     NotifyOfPropertyChange();
@@ -343,75 +369,21 @@ namespace DaxStudio.UI.ViewModels
                    traceEvent.EventClass == DaxStudioTraceEventClass.Error;
         }
 
-        /// <summary>
-        /// Process individual trace events as they arrive in real-time.
-        /// This captures SE events before ProcessResults is triggered by QueryEnd.
-        /// </summary>
-        protected override void ProcessSingleEvent(DaxStudioTraceEventArgs singleEvent)
-        {
-            base.ProcessSingleEvent(singleEvent);
-
-            // Capture SE events in real-time as they arrive
-            if (singleEvent.EventClass == DaxStudioTraceEventClass.VertiPaqSEQueryEnd)
-            {
-                var seEvent = new TraceStorageEngineEvent
-                {
-                    Query = singleEvent.TextData,
-                    Duration = singleEvent.Duration,
-                    CpuTime = singleEvent.CpuTime,
-                    NetParallelDuration = singleEvent.NetParallelDuration,
-                    Subclass = singleEvent.EventSubclass,
-                    StartTime = singleEvent.StartTime,
-                    EndTime = singleEvent.EndTime,
-                    ObjectName = singleEvent.ObjectName
-                };
-
-                // Extract estimated rows and size from xmSQL query text
-                ExtractEstimatedSizeFromQuery(seEvent);
-
-                Log.Information(">>> ProcessSingleEvent: Captured SE Event - ObjectName={ObjectName}, Duration={Duration}ms",
-                    seEvent.ObjectName, seEvent.Duration);
-
-                lock (_seEventsLock)
-                {
-                    _realtimeSeEvents.Add(seEvent);
-                }
-            }
-        }
-
         protected override async void ProcessResults()
         {
-            // DEBUG: Log entry point - REMOVE BEFORE RELEASE
-            System.Diagnostics.Debug.WriteLine($">>> VisualQueryPlan.ProcessResults() ENTRY - Events.Count={Events.Count}");
-
             if (HasPlanData)
             {
                 // Results have not been cleared, probably from another action
-                System.Diagnostics.Debug.WriteLine(">>> VisualQueryPlan: Already has data, skipping");
                 return;
             }
 
             var physicalPlanRows = new List<PhysicalQueryPlanRow>();
             var logicalPlanRows = new List<LogicalQueryPlanRow>();
+            var timingEvents = new List<TraceStorageEngineEvent>();
 
-            // Get SE events captured in real-time via ProcessSingleEvent
-            List<TraceStorageEngineEvent> timingEvents;
-            lock (_seEventsLock)
-            {
-                timingEvents = new List<TraceStorageEngineEvent>(_realtimeSeEvents);
-            }
-
-            Log.Information(">>> VisualQueryPlan.ProcessResults: Using {Count} SE events captured in real-time", timingEvents.Count);
-
-            int eventCount = 0;
             while (!Events.IsEmpty)
             {
                 Events.TryDequeue(out var traceEvent);
-                eventCount++;
-
-                // DEBUG: Log each event type - REMOVE BEFORE RELEASE
-                Log.Debug(">>> VisualQueryPlan: Processing event {Index} - Class={Class}, Subclass={Subclass}",
-                    eventCount, traceEvent.EventClass, traceEvent.EventSubclass);
 
                 if (traceEvent.EventClass == DaxStudioTraceEventClass.DAXQueryPlan)
                 {
@@ -419,13 +391,11 @@ namespace DaxStudio.UI.ViewModels
                     {
                         PhysicalQueryPlanText = traceEvent.TextData;
                         physicalPlanRows.AddRange(ParsePhysicalPlan(traceEvent.TextData));
-                        Log.Debug(">>> VisualQueryPlan: Parsed {Count} physical plan rows", physicalPlanRows.Count);
                     }
                     else if (traceEvent.EventSubclass == DaxStudioTraceEventSubclass.DAXVertiPaqLogicalPlan)
                     {
                         LogicalQueryPlanText = traceEvent.TextData;
                         logicalPlanRows.AddRange(ParseLogicalPlan(traceEvent.TextData));
-                        Log.Debug(">>> VisualQueryPlan: Parsed {Count} logical plan rows", logicalPlanRows.Count);
                     }
                 }
                 else if (traceEvent.EventClass == DaxStudioTraceEventClass.QueryBegin)
@@ -439,14 +409,31 @@ namespace DaxStudio.UI.ViewModels
                     RequestID = traceEvent.RequestId;
                     CommandText = traceEvent.TextData;
                     TotalDuration = traceEvent.Duration;
-                    Log.Debug(">>> VisualQueryPlan: QueryEnd - TotalDuration={Duration}ms", TotalDuration);
                 }
-                // Note: VertiPaqSEQueryEnd events are now captured in ProcessSingleEvent
+                else if (traceEvent.EventClass == DaxStudioTraceEventClass.VertiPaqSEQueryEnd)
+                {
+                    // Extract SE events directly from the queue
+                    Log.Debug("{class} {method} Found SE event - Duration={Duration}, ObjectName={ObjectName}",
+                        nameof(VisualQueryPlanViewModel), nameof(ProcessResults), traceEvent.Duration, traceEvent.ObjectName);
+                    var seEvent = new TraceStorageEngineEvent
+                    {
+                        ObjectName = traceEvent.ObjectName,
+                        Query = traceEvent.TextData,
+                        TextData = traceEvent.TextData,
+                        Duration = traceEvent.Duration,
+                        CpuTime = traceEvent.CpuTime,
+                        Subclass = traceEvent.EventSubclass,
+                        NetParallelDuration = traceEvent.NetParallelDuration,
+                        StartTime = traceEvent.StartTime,
+                        EndTime = traceEvent.EndTime
+                    };
+                    ExtractEstimatedSizeFromQuery(seEvent);
+                    timingEvents.Add(seEvent);
+                }
             }
 
-            // DEBUG: Summary after event processing - REMOVE BEFORE RELEASE
-            Log.Information(">>> VisualQueryPlan: Event processing complete - PhysicalRows={Physical}, LogicalRows={Logical}, SEEvents={SE}",
-                physicalPlanRows.Count, logicalPlanRows.Count, timingEvents.Count);
+            Log.Debug("{class} {method} Event processing complete - PhysicalRows={Physical}, LogicalRows={Logical}, SEEvents={SE}, TotalDuration={TotalDuration}ms",
+                nameof(VisualQueryPlanViewModel), nameof(ProcessResults), physicalPlanRows.Count, logicalPlanRows.Count, timingEvents.Count, TotalDuration);
 
             // Enrich the plans asynchronously
             try
@@ -466,7 +453,8 @@ namespace DaxStudio.UI.ViewModels
                         _physicalPlan.FormulaEngineDurationMs = Math.Max(0, TotalDuration - _physicalPlan.StorageEngineDurationMs);
                     }
 
-                    Log.Debug(">>> ProcessResults: Physical plan set - TotalDuration={Total}, SEDuration={SE}, FEDuration={FE}",
+                    Log.Debug("{class} {method} Physical plan set - TotalDuration={Total}, SEDuration={SE}, FEDuration={FE}",
+                        nameof(VisualQueryPlanViewModel), nameof(ProcessResults),
                         _physicalPlan.TotalDurationMs, _physicalPlan.StorageEngineDurationMs, _physicalPlan.FormulaEngineDurationMs);
                 }
 
@@ -485,7 +473,8 @@ namespace DaxStudio.UI.ViewModels
                         _logicalPlan.FormulaEngineDurationMs = Math.Max(0, TotalDuration - _logicalPlan.StorageEngineDurationMs);
                     }
 
-                    Log.Debug(">>> ProcessResults: Logical plan set - TotalDuration={Total}, SEDuration={SE}, FEDuration={FE}",
+                    Log.Debug("{class} {method} Logical plan set - TotalDuration={Total}, SEDuration={SE}, FEDuration={FE}",
+                        nameof(VisualQueryPlanViewModel), nameof(ProcessResults),
                         _logicalPlan.TotalDurationMs, _logicalPlan.StorageEngineDurationMs, _logicalPlan.FormulaEngineDurationMs);
                 }
 
@@ -519,12 +508,6 @@ namespace DaxStudio.UI.ViewModels
         public override void ClearAll()
         {
             Events.Clear();
-
-            // Clear real-time SE events
-            lock (_seEventsLock)
-            {
-                _realtimeSeEvents.Clear();
-            }
 
             _physicalPlan = null;
             _logicalPlan = null;
@@ -612,30 +595,17 @@ namespace DaxStudio.UI.ViewModels
 
         public void NavigateToIssue(IssueViewModel issue)
         {
-            if (issue == null)
-            {
-                Log.Debug(">>> NavigateToIssue: issue is null");
-                return;
-            }
+            if (issue == null) return;
 
-            Log.Debug(">>> NavigateToIssue: Looking for node {NodeId} for issue '{Title}'",
-                issue.AffectedNodeId, issue.Title);
-
-            var node = FindNodeById(issue.AffectedNodeId);
+            var node = FindNodeOrAncestor(issue.AffectedNodeId);
             if (node != null)
             {
-                Log.Debug(">>> NavigateToIssue: Found node {NodeId}, selecting it", node.NodeId);
                 SelectedNode = node;
                 // Switch to Node Details tab to show the selected node
                 SelectedTabIndex = 0;
 
                 // Scroll the node into view
                 ScrollNodeIntoView(node);
-            }
-            else
-            {
-                Log.Debug(">>> NavigateToIssue: Node {NodeId} not found in AllNodes (count={Count})",
-                    issue.AffectedNodeId, AllNodes.Count);
             }
         }
 
@@ -714,6 +684,13 @@ namespace DaxStudio.UI.ViewModels
                     var rows = ParsePhysicalPlan(PhysicalQueryPlanText);
                     _physicalPlan = await _enrichmentService.EnrichPhysicalPlanAsync(
                         rows, null, null, ActivityID);
+
+                    // Set timing values from loaded state (same as ProcessResults)
+                    _physicalPlan.TotalDurationMs = TotalDuration;
+                    if (TotalDuration > 0)
+                    {
+                        _physicalPlan.FormulaEngineDurationMs = Math.Max(0, TotalDuration - _physicalPlan.StorageEngineDurationMs);
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(LogicalQueryPlanText))
@@ -721,6 +698,13 @@ namespace DaxStudio.UI.ViewModels
                     var rows = ParseLogicalPlan(LogicalQueryPlanText);
                     _logicalPlan = await _enrichmentService.EnrichLogicalPlanAsync(
                         rows, null, null, ActivityID);
+
+                    // Set timing values from loaded state (same as ProcessResults)
+                    _logicalPlan.TotalDurationMs = TotalDuration;
+                    if (TotalDuration > 0)
+                    {
+                        _logicalPlan.FormulaEngineDurationMs = Math.Max(0, TotalDuration - _logicalPlan.StorageEngineDurationMs);
+                    }
                 }
 
                 Execute.OnUIThread(() => UpdateDisplayedPlan());
@@ -872,10 +856,14 @@ namespace DaxStudio.UI.ViewModels
         /// Recursively collapses simple comparison and arithmetic operators with their operand children
         /// into single nodes for cleaner display. E.g., "GreaterThan" with "ColValue" and "Constant"
         /// children becomes "[Amount] > 100", and "Multiply" with "ColValue" children becomes "[Qty] * [Price]".
+        /// Also collapses chains of Proxy operators to reduce visual clutter.
         /// </summary>
         private void CollapseSimpleOperators(PlanNodeViewModel node)
         {
             if (node == null) return;
+
+            // First, collapse Proxy chains (remove intermediate Proxy operators)
+            CollapseProxyChains(node);
 
             // Process children first (bottom-up), since we'll be modifying the tree
             foreach (var child in node.Children.ToList())
@@ -885,6 +873,48 @@ namespace DaxStudio.UI.ViewModels
 
             // Now try to collapse this node if it's a simple comparison or arithmetic operation
             node.CollapseIfPossible();
+        }
+
+        /// <summary>
+        /// Collapses chains of Proxy operators by removing intermediate Proxy nodes.
+        /// E.g., Proxy -> Proxy -> Union becomes Proxy -> Union (with collapsed count shown)
+        /// </summary>
+        private void CollapseProxyChains(PlanNodeViewModel node)
+        {
+            if (node == null) return;
+
+            // Keep collapsing while this node is a Proxy with a single Proxy child
+            while (IsProxyOperator(node) && node.Children.Count == 1 && IsProxyOperator(node.Children[0]))
+            {
+                var proxyChild = node.Children[0];
+
+                // Track the collapsed operation text
+                node.CollapsedProxyOperations ??= new List<string>();
+                node.CollapsedProxyOperations.Add(proxyChild.Operation ?? proxyChild.OperatorName);
+
+                // Replace the single Proxy child with its children
+                node.Children.Clear();
+                foreach (var grandchild in proxyChild.Children)
+                {
+                    node.Children.Add(grandchild);
+                }
+            }
+
+            // Recursively process remaining children
+            foreach (var child in node.Children.ToList())
+            {
+                CollapseProxyChains(child);
+            }
+        }
+
+        /// <summary>
+        /// Checks if a node is a Proxy operator (used for collapsing chains).
+        /// </summary>
+        private bool IsProxyOperator(PlanNodeViewModel node)
+        {
+            if (node == null) return false;
+            var opName = node.OperatorName?.ToLowerInvariant() ?? "";
+            return opName.StartsWith("proxy");
         }
 
         /// <summary>
@@ -1066,10 +1096,11 @@ namespace DaxStudio.UI.ViewModels
             }
 
             // Simple top-down tree layout with padding
-            const double horizontalSpacing = 50;
-            const double verticalSpacing = 100;
-            const double paddingLeft = 30;
-            const double paddingTop = 30;
+            const double horizontalSpacing = 30;
+            const double verticalSpacing = 60;
+            const double paddingLeft = 20;
+            const double paddingTop = 20;
+            const double paddingBottom = 150; // Extra bottom padding for scroll-and-zoom workflow
 
             var levelWidths = new Dictionary<int, double>();
             var levelCounts = new Dictionary<int, int>();
@@ -1093,7 +1124,7 @@ namespace DaxStudio.UI.ViewModels
 
             // Add padding to the bounds
             ActualContentWidth = maxX + paddingLeft;
-            ActualContentHeight = maxY + paddingTop;
+            ActualContentHeight = maxY + paddingBottom;
         }
 
         private void CalculateLevelInfo(PlanNodeViewModel node, int level,
@@ -1114,6 +1145,29 @@ namespace DaxStudio.UI.ViewModels
             }
         }
 
+        /// <summary>
+        /// Calculates the width needed by a subtree (including all descendants).
+        /// This is used for compact layout of unbalanced trees.
+        /// </summary>
+        private double CalculateSubtreeWidth(PlanNodeViewModel node, double horizontalSpacing)
+        {
+            if (node.Children.Count == 0)
+            {
+                return node.Width;
+            }
+
+            // Sum of all children's subtree widths plus spacing between them
+            double totalChildWidth = 0;
+            foreach (var child in node.Children)
+            {
+                if (totalChildWidth > 0) totalChildWidth += horizontalSpacing;
+                totalChildWidth += CalculateSubtreeWidth(child, horizontalSpacing);
+            }
+
+            // Parent node might be wider than all children combined
+            return Math.Max(node.Width, totalChildWidth);
+        }
+
         private double PositionNodes(PlanNodeViewModel node, int level, double xOffset,
             double horizontalSpacing, double verticalSpacing, Dictionary<int, int> levelCounts, double paddingTop = 0)
         {
@@ -1125,25 +1179,93 @@ namespace DaxStudio.UI.ViewModels
                 return xOffset + node.Width + horizontalSpacing;
             }
 
-            double childOffset = xOffset;
+            // Calculate total width needed for all children
+            double totalChildrenWidth = 0;
+            var childWidths = new List<double>();
             foreach (var child in node.Children)
             {
-                childOffset = PositionNodes(child, level + 1, childOffset, horizontalSpacing, verticalSpacing, levelCounts, paddingTop);
+                var width = CalculateSubtreeWidth(child, horizontalSpacing);
+                childWidths.Add(width);
+                if (totalChildrenWidth > 0) totalChildrenWidth += horizontalSpacing;
+                totalChildrenWidth += width;
             }
 
-            // Center parent over children
-            double firstChildX = node.Children.First().X;
-            double lastChildX = node.Children.Last().X + node.Children.Last().Width;
-            double centerX = (firstChildX + lastChildX) / 2 - node.Width / 2;
+            // If parent is wider than children, start children centered under parent
+            double childStartOffset;
+            if (node.Width > totalChildrenWidth)
+            {
+                // Parent is wider - center children under parent
+                childStartOffset = xOffset + (node.Width - totalChildrenWidth) / 2;
+                node.Position = new Point(xOffset, y);
+            }
+            else
+            {
+                // Children are wider - position children from current offset
+                childStartOffset = xOffset;
+            }
 
-            node.Position = new Point(centerX, y);
+            // Position each child with its allocated subtree width
+            double childOffset = childStartOffset;
+            double maxChildRight = 0;
+            for (int i = 0; i < node.Children.Count; i++)
+            {
+                var child = node.Children[i];
+                var allocatedWidth = childWidths[i];
 
-            return Math.Max(childOffset, centerX + node.Width + horizontalSpacing);
+                // Center this child within its allocated width
+                var childSubtreeWidth = CalculateSubtreeWidth(child, horizontalSpacing);
+                var childCenterOffset = childOffset + (allocatedWidth - childSubtreeWidth) / 2;
+
+                var rightEdge = PositionNodes(child, level + 1, childCenterOffset, horizontalSpacing, verticalSpacing, levelCounts, paddingTop);
+                maxChildRight = Math.Max(maxChildRight, rightEdge);
+
+                childOffset += allocatedWidth + horizontalSpacing;
+            }
+
+            // If children are wider, center parent over children
+            if (node.Width <= totalChildrenWidth)
+            {
+                double firstChildX = node.Children.First().X;
+                double lastChildX = node.Children.Last().X + node.Children.Last().Width;
+                double centerX = (firstChildX + lastChildX) / 2 - node.Width / 2;
+                node.Position = new Point(centerX, y);
+            }
+
+            return Math.Max(maxChildRight, node.X + node.Width + horizontalSpacing);
         }
 
         private PlanNodeViewModel FindNodeById(int nodeId)
         {
             return AllNodes.FirstOrDefault(n => n.NodeId == nodeId);
+        }
+
+        /// <summary>
+        /// Finds a node by ID, or its nearest visible ancestor if the node was folded.
+        /// </summary>
+        private PlanNodeViewModel FindNodeOrAncestor(int nodeId)
+        {
+            // First try direct lookup
+            var node = FindNodeById(nodeId);
+            if (node != null)
+                return node;
+
+            // Node was folded - find it in the plan and navigate to parent
+            var plan = ShowPhysicalPlan ? _physicalPlan : _logicalPlan;
+            if (plan?.AllNodes == null)
+                return null;
+
+            var enrichedNode = plan.AllNodes.FirstOrDefault(n => n.NodeId == nodeId);
+            while (enrichedNode?.Parent != null)
+            {
+                enrichedNode = enrichedNode.Parent;
+                node = FindNodeById(enrichedNode.NodeId);
+                if (node != null)
+                {
+                    return node;
+                }
+            }
+
+            return null;
         }
 
         private List<PhysicalQueryPlanRow> ParsePhysicalPlan(string planText)

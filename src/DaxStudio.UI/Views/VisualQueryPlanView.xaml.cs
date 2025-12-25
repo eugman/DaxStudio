@@ -1,9 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Navigation;
-using DaxStudio.UI.Controls;
 using DaxStudio.UI.ViewModels;
 
 namespace DaxStudio.UI.Views
@@ -11,7 +11,7 @@ namespace DaxStudio.UI.Views
     /// <summary>
     /// Interaction logic for VisualQueryPlanView.xaml
     /// </summary>
-    public partial class VisualQueryPlanView : ZoomableUserControl
+    public partial class VisualQueryPlanView : UserControl
     {
         private bool _isPanning;
         private Point _panStartPoint;
@@ -36,6 +36,14 @@ namespace DaxStudio.UI.Views
                 PlanScrollViewer.PreviewMouseMove += ScrollViewer_PreviewMouseMove;
                 PlanScrollViewer.PreviewMouseLeftButtonUp += ScrollViewer_PreviewMouseLeftButtonUp;
                 PlanScrollViewer.MouseLeave += ScrollViewer_MouseLeave;
+                PlanScrollViewer.PreviewMouseWheel += ScrollViewer_PreviewMouseWheel;
+            }
+
+            // If plan data already exists, center on the root node
+            var vm = DataContext as VisualQueryPlanViewModel;
+            if (vm?.RootNode != null)
+            {
+                CenterOnRootNode();
             }
         }
 
@@ -47,6 +55,7 @@ namespace DaxStudio.UI.Views
                 PlanScrollViewer.PreviewMouseMove -= ScrollViewer_PreviewMouseMove;
                 PlanScrollViewer.PreviewMouseLeftButtonUp -= ScrollViewer_PreviewMouseLeftButtonUp;
                 PlanScrollViewer.MouseLeave -= ScrollViewer_MouseLeave;
+                PlanScrollViewer.PreviewMouseWheel -= ScrollViewer_PreviewMouseWheel;
             }
         }
 
@@ -124,6 +133,22 @@ namespace DaxStudio.UI.Views
             }
         }
 
+        private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            // Handle Ctrl+MouseWheel for zooming the canvas only
+            if (Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                var vm = DataContext as VisualQueryPlanViewModel;
+                if (vm != null)
+                {
+                    var zoomDelta = e.Delta / 1200.0;
+                    vm.ZoomLevel += zoomDelta;
+                    e.Handled = true; // Prevent base class from scaling the whole control
+                }
+            }
+            // Without Ctrl, let the ScrollViewer handle normal scrolling
+        }
+
         private void OnDataContextChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e)
         {
             // Unsubscribe from old ViewModel
@@ -171,32 +196,45 @@ namespace DaxStudio.UI.Views
 
         private void OnPlanLayoutUpdated(object sender, EventArgs e)
         {
-            // Snap scroll position if we're scrolled past the actual content bounds
-            // Use Dispatcher to ensure layout is complete before checking
+            CenterOnRootNode();
+        }
+
+        private void CenterOnRootNode()
+        {
+            // Use Dispatcher with Render priority to ensure layout is fully complete
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (PlanScrollViewer == null) return;
 
-                // Get actual content bounds from ViewModel (not Canvas fixed size)
                 var vm = DataContext as VisualQueryPlanViewModel;
-                if (vm == null) return;
+                if (vm == null || vm.RootNode == null) return;
 
-                var actualContentHeight = vm.ActualContentHeight;
-                var actualContentWidth = vm.ActualContentWidth;
-
-                // Calculate max scroll offset based on actual content, not fixed Canvas size
-                var maxVerticalOffset = Math.Max(0, actualContentHeight - PlanScrollViewer.ViewportHeight);
-                if (PlanScrollViewer.VerticalOffset > maxVerticalOffset)
+                // Skip if viewport not yet measured
+                if (PlanScrollViewer.ViewportWidth <= 0 || PlanScrollViewer.ViewportHeight <= 0)
                 {
-                    PlanScrollViewer.ScrollToVerticalOffset(maxVerticalOffset);
+                    // Retry after layout
+                    Dispatcher.BeginInvoke(new Action(CenterOnRootNode),
+                        System.Windows.Threading.DispatcherPriority.Background);
+                    return;
                 }
 
-                var maxHorizontalOffset = Math.Max(0, actualContentWidth - PlanScrollViewer.ViewportWidth);
-                if (PlanScrollViewer.HorizontalOffset > maxHorizontalOffset)
-                {
-                    PlanScrollViewer.ScrollToHorizontalOffset(maxHorizontalOffset);
-                }
-            }), System.Windows.Threading.DispatcherPriority.Loaded);
+                var zoomLevel = vm.ZoomLevel;
+                var nodeX = vm.RootNode.X * zoomLevel;
+                var nodeY = vm.RootNode.Y * zoomLevel;
+                var nodeWidth = vm.RootNode.Width * zoomLevel;
+                var nodeHeight = vm.RootNode.Height * zoomLevel;
+
+                // Calculate scroll position to center the root node
+                var targetHorizontal = nodeX + (nodeWidth / 2) - (PlanScrollViewer.ViewportWidth / 2);
+                var targetVertical = nodeY + (nodeHeight / 2) - (PlanScrollViewer.ViewportHeight / 2);
+
+                // Clamp to valid scroll range
+                targetHorizontal = Math.Max(0, Math.Min(targetHorizontal, PlanScrollViewer.ScrollableWidth));
+                targetVertical = Math.Max(0, Math.Min(targetVertical, PlanScrollViewer.ScrollableHeight));
+
+                PlanScrollViewer.ScrollToHorizontalOffset(targetHorizontal);
+                PlanScrollViewer.ScrollToVerticalOffset(targetVertical);
+            }), System.Windows.Threading.DispatcherPriority.Render);
         }
 
         /// <summary>

@@ -241,7 +241,6 @@ namespace DaxStudio.UI.Services
 
         private void CorrelateTimingData(EnrichedQueryPlan plan, List<TraceStorageEngineEvent> timingEvents)
         {
-            // DEBUG: Entry point - REMOVE BEFORE RELEASE
             Log.Information(">>> PlanEnrichmentService.CorrelateTimingData() ENTRY - TimingEvents={Count}", timingEvents?.Count ?? 0);
 
             if (timingEvents == null || timingEvents.Count == 0)
@@ -255,11 +254,9 @@ namespace DaxStudio.UI.Services
             long totalSeCpu = 0;
             int cacheHits = 0;
 
-            // Build lookup of Storage Engine nodes by table name for matching
-            // Operations look like: "Scan_Vertipaq: ... ('Customer'[First Name]) ..."
-            // Also include Sum_Vertipaq, Count_Vertipaq, etc.
-            var scanNodesByTable = new Dictionary<string, EnrichedPlanNode>(StringComparer.OrdinalIgnoreCase);
-            foreach (var node in plan.AllNodes.Where(n => n.Operation != null &&
+            // Collect ALL Storage Engine nodes (not just one per table)
+            // We'll match by column overlap, so multiple nodes for the same table is fine
+            var allScanNodes = plan.AllNodes.Where(n => n.Operation != null &&
                 (n.Operation.Contains("Scan_Vertipaq") ||
                  n.Operation.Contains("Sum_Vertipaq") ||
                  n.Operation.Contains("Count_Vertipaq") ||
@@ -269,37 +266,31 @@ namespace DaxStudio.UI.Services
                  n.Operation.Contains("GroupBy_Vertipaq") ||
                  n.Operation.Contains("Filter_Vertipaq") ||
                  n.Operation.Contains("DistinctCount_Vertipaq") ||
-                 n.Operation.Contains("_Vertipaq"))))  // Catch-all for any Vertipaq operator
+                 n.Operation.Contains("_Vertipaq"))).ToList();
+
+            // Pre-extract columns from each scan node's RequiredCols
+            var scanNodeColumns = new Dictionary<EnrichedPlanNode, HashSet<string>>();
+            foreach (var node in allScanNodes)
             {
-                var tableName = ExtractTableNameFromOperation(node.Operation);
-                if (!string.IsNullOrEmpty(tableName) && !scanNodesByTable.ContainsKey(tableName))
-                {
-                    scanNodesByTable[tableName] = node;
-                    Log.Debug(">>> PlanEnrichmentService: Mapped table '{Table}' to node {NodeId}", tableName, node.NodeId);
-                }
+                var columns = ExtractColumnsFromRequiredCols(node.Operation);
+                scanNodeColumns[node] = columns;
+                Log.Debug(">>> PlanEnrichmentService: Node {NodeId} has columns: [{Columns}]",
+                    node.NodeId, string.Join(", ", columns));
             }
 
-            Log.Information(">>> PlanEnrichmentService: Built table lookup with {Count} entries: [{Tables}]",
-                scanNodesByTable.Count, string.Join(", ", scanNodesByTable.Keys));
+            Log.Information(">>> PlanEnrichmentService: Collected {Count} scan nodes for column-based matching", allScanNodes.Count);
 
-            // Log all timing events for debugging
-            for (int i = 0; i < timingEvents.Count; i++)
-            {
-                var evt = timingEvents[i];
-                var queryPreview = (evt.Query ?? evt.TextData)?.Replace("\n", " ").Replace("\r", "");
-                if (queryPreview?.Length > 80) queryPreview = queryPreview.Substring(0, 80) + "...";
-                Log.Information(">>> PlanEnrichmentService: Event[{Index}] ObjectName='{ObjectName}', IsInternal={IsInternal}, Query='{Query}'",
-                    i, evt.ObjectName ?? "(null)", evt.IsInternalEvent, queryPreview ?? "(null)");
-            }
-
-            // Process ALL events for xmSQL correlation (internal events can also have xmSQL)
+            // Process ALL timing events
             var userEvents = timingEvents.Where(e => !e.IsInternalEvent).ToList();
             var internalEvents = timingEvents.Where(e => e.IsInternalEvent).ToList();
 
             Log.Information(">>> PlanEnrichmentService: {UserCount} user events, {InternalCount} internal events",
                 userEvents.Count, internalEvents.Count);
 
-            // Match ALL timing events to scan nodes by ObjectName or xmSQL FROM clause
+            // Track which nodes have been matched to avoid double-assignment
+            var matchedNodes = new HashSet<int>();
+
+            // Match timing events to scan nodes by column overlap
             foreach (var evt in timingEvents)
             {
                 if (evt.Duration.HasValue) totalSeDuration += evt.Duration.Value;
@@ -308,79 +299,168 @@ namespace DaxStudio.UI.Services
                 bool isCacheHit = evt.Subclass == DaxStudioTraceEventSubclass.VertiPaqCacheExactMatch;
                 if (isCacheHit) cacheHits++;
 
-                // Try to match by ObjectName first
-                string matchKey = evt.ObjectName;
-                EnrichedPlanNode node = null;
+                var xmSql = evt.Query ?? evt.TextData;
+                var xmSqlColumns = ExtractColumnsFromXmSql(xmSql);
+                var xmSqlTable = ExtractTableNameFromXmSql(xmSql);
 
-                if (!string.IsNullOrEmpty(matchKey) && scanNodesByTable.TryGetValue(matchKey, out node))
+                Log.Debug(">>> PlanEnrichmentService: Event xmSQL table='{Table}', columns=[{Columns}]",
+                    xmSqlTable ?? "(null)", string.Join(", ", xmSqlColumns));
+
+                // Find the best matching node by column overlap
+                EnrichedPlanNode bestMatch = null;
+                int bestOverlap = 0;
+
+                foreach (var node in allScanNodes)
                 {
-                    Log.Information(">>> PlanEnrichmentService: MATCHED by ObjectName '{ObjectName}' to node {NodeId}", matchKey, node.NodeId);
-                }
-                else
-                {
-                    // Fallback: extract table name from xmSQL query (FROM 'TableName' pattern)
-                    var queryTableName = ExtractTableNameFromXmSql(evt.Query ?? evt.TextData);
-                    if (!string.IsNullOrEmpty(queryTableName) && scanNodesByTable.TryGetValue(queryTableName, out node))
+                    // Skip if already matched
+                    if (matchedNodes.Contains(node.NodeId))
+                        continue;
+
+                    var nodeColumns = scanNodeColumns[node];
+                    var nodeTable = ExtractTableNameFromOperation(node.Operation);
+
+                    // Calculate column overlap (ignoring table qualification and GUID suffixes)
+                    int overlap = CalculateColumnOverlap(nodeColumns, xmSqlColumns);
+
+                    // Bonus for matching table name
+                    if (!string.IsNullOrEmpty(xmSqlTable) && !string.IsNullOrEmpty(nodeTable) &&
+                        string.Equals(xmSqlTable, nodeTable, StringComparison.OrdinalIgnoreCase))
                     {
-                        matchKey = queryTableName;
-                        Log.Information(">>> PlanEnrichmentService: MATCHED by xmSQL FROM clause '{TableName}' to node {NodeId}", matchKey, node.NodeId);
+                        overlap += 10; // Table match bonus
+                    }
+
+                    if (overlap > bestOverlap)
+                    {
+                        bestOverlap = overlap;
+                        bestMatch = node;
                     }
                 }
 
-                if (node != null)
+                if (bestMatch != null && bestOverlap > 0)
                 {
+                    matchedNodes.Add(bestMatch.NodeId);
+                    Log.Information(">>> PlanEnrichmentService: MATCHED event to node {NodeId} (overlap={Overlap}, table='{Table}')",
+                        bestMatch.NodeId, bestOverlap, ExtractTableNameFromOperation(bestMatch.Operation));
+
                     // Populate xmSQL data
-                    node.XmSql = evt.TextData ?? evt.Query;
-                    node.ResolvedXmSql = evt.Query ?? evt.TextData;
-                    node.DurationMs = evt.Duration;
-                    node.CpuTimeMs = evt.CpuTime;
-                    node.EstimatedRows = evt.EstimatedRows;
-                    node.EstimatedKBytes = evt.EstimatedKBytes;
-                    node.IsCacheHit = isCacheHit;
-                    node.EngineType = EngineType.StorageEngine;
-                    node.ObjectName = matchKey;
+                    bestMatch.XmSql = evt.TextData ?? evt.Query;
+                    bestMatch.ResolvedXmSql = evt.Query ?? evt.TextData;
+                    bestMatch.DurationMs = evt.Duration;
+                    bestMatch.CpuTimeMs = evt.CpuTime;
+                    bestMatch.EstimatedRows = evt.EstimatedRows;
+                    bestMatch.EstimatedKBytes = evt.EstimatedKBytes;
+                    bestMatch.IsCacheHit = isCacheHit;
+                    bestMatch.EngineType = EngineType.StorageEngine;
+                    bestMatch.ObjectName = xmSqlTable;
 
-                    // RECONCILE ROW COUNTS: Use EstimatedRows from server timing when plan shows 0
-                    if ((!node.Records.HasValue || node.Records == 0) && evt.EstimatedRows.HasValue && evt.EstimatedRows > 0)
+                    // RECONCILE ROW COUNTS
+                    if ((!bestMatch.Records.HasValue || bestMatch.Records == 0) && evt.EstimatedRows.HasValue && evt.EstimatedRows > 0)
                     {
-                        node.Records = evt.EstimatedRows;
-                        node.RecordsSource = "ServerTiming";
-                        Log.Information(">>> PlanEnrichmentService: Reconciled node {NodeId} records from 0 to {NewValue} (from server timing)",
-                            node.NodeId, evt.EstimatedRows);
+                        bestMatch.Records = evt.EstimatedRows;
+                        bestMatch.RecordsSource = "ServerTiming";
                     }
 
-                    // CALCULATE PARALLELISM: Duration / NetParallelDuration
+                    // CALCULATE PARALLELISM
                     if (evt.Duration.HasValue && evt.NetParallelDuration.HasValue && evt.NetParallelDuration > 0)
                     {
-                        node.NetParallelDurationMs = evt.NetParallelDuration;
-                        node.Parallelism = (int)Math.Max(1, Math.Round((double)evt.Duration.Value / evt.NetParallelDuration.Value));
-                        Log.Information(">>> PlanEnrichmentService: Node {NodeId} parallelism = x{Parallelism}",
-                            node.NodeId, node.Parallelism);
+                        bestMatch.NetParallelDurationMs = evt.NetParallelDuration;
+                        bestMatch.Parallelism = (int)Math.Max(1, Math.Round((double)evt.Duration.Value / evt.NetParallelDuration.Value));
                     }
                 }
                 else
                 {
-                    Log.Debug(">>> PlanEnrichmentService: No node match for event ObjectName='{ObjectName}', Query starts with '{QueryStart}'",
-                        evt.ObjectName ?? "(null)",
-                        (evt.Query ?? evt.TextData)?.Substring(0, Math.Min(50, (evt.Query ?? evt.TextData)?.Length ?? 0)) ?? "(null)");
+                    Log.Debug(">>> PlanEnrichmentService: No node match for event, table='{Table}', columns=[{Columns}]",
+                        xmSqlTable ?? "(null)", string.Join(", ", xmSqlColumns.Take(3)));
                 }
             }
-
-            // Note: All events (user + internal) are now processed in the main loop above
 
             plan.StorageEngineDurationMs = totalSeDuration;
             plan.StorageEngineCpuMs = totalSeCpu;
             plan.CacheHits = cacheHits;
             plan.StorageEngineQueryCount = userEvents.Count + internalEvents.Count;
 
-            // FE time = Total - SE time (approximation)
             if (plan.TotalDurationMs > 0)
             {
                 plan.FormulaEngineDurationMs = Math.Max(0, plan.TotalDurationMs - totalSeDuration);
             }
 
-            Log.Information(">>> PlanEnrichmentService: Correlation complete. SE duration={SeDuration}ms, SE queries={SeQueryCount}, Cache hits={CacheHits}",
-                totalSeDuration, plan.StorageEngineQueryCount, cacheHits);
+            Log.Information(">>> PlanEnrichmentService: Correlation complete. SE duration={SeDuration}ms, SE queries={SeQueryCount}, Cache hits={CacheHits}, Matched nodes={MatchedCount}",
+                totalSeDuration, plan.StorageEngineQueryCount, cacheHits, matchedNodes.Count);
+        }
+
+        /// <summary>
+        /// Extracts column names from RequiredCols pattern in operation string.
+        /// E.g., "RequiredCols(0, 48, 56)('Product'[Brand], 'Sales'[RowNumber-GUID], 'Sales'[Quantity])"
+        /// Returns: {"Brand", "RowNumber", "Quantity"}
+        /// </summary>
+        private HashSet<string> ExtractColumnsFromRequiredCols(string operation)
+        {
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(operation)) return columns;
+
+            // Match all 'Table'[Column] patterns
+            var matches = Regex.Matches(operation, @"'[^']*'\[([^\]]+)\]");
+            foreach (Match match in matches)
+            {
+                var colName = match.Groups[1].Value;
+                // Strip GUID suffix from RowNumber columns (e.g., "RowNumber-2662979B-1795-...")
+                var dashIdx = colName.IndexOf('-');
+                if (dashIdx > 0 && colName.StartsWith("RowNumber", StringComparison.OrdinalIgnoreCase))
+                {
+                    colName = colName.Substring(0, dashIdx);
+                }
+                columns.Add(colName);
+            }
+
+            return columns;
+        }
+
+        /// <summary>
+        /// Extracts column names from xmSQL SELECT clause.
+        /// E.g., "SELECT 'Sales'[RowNumber], 'Sales'[Quantity] FROM 'Sales'"
+        /// Returns: {"RowNumber", "Quantity"}
+        /// </summary>
+        private HashSet<string> ExtractColumnsFromXmSql(string xmSql)
+        {
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(xmSql)) return columns;
+
+            // Match all 'Table'[Column] patterns in SELECT (before FROM)
+            var fromIdx = xmSql.IndexOf("FROM", StringComparison.OrdinalIgnoreCase);
+            var selectPart = fromIdx > 0 ? xmSql.Substring(0, fromIdx) : xmSql;
+
+            var matches = Regex.Matches(selectPart, @"'[^']*'\[([^\]]+)\]");
+            foreach (Match match in matches)
+            {
+                columns.Add(match.Groups[1].Value);
+            }
+
+            return columns;
+        }
+
+        /// <summary>
+        /// Calculates the overlap between two sets of column names.
+        /// </summary>
+        private int CalculateColumnOverlap(HashSet<string> nodeColumns, HashSet<string> xmSqlColumns)
+        {
+            int overlap = 0;
+            foreach (var xmCol in xmSqlColumns)
+            {
+                // Check for exact match or prefix match (for RowNumber columns)
+                if (nodeColumns.Contains(xmCol))
+                {
+                    overlap++;
+                }
+                else if (xmCol.StartsWith("RowNumber", StringComparison.OrdinalIgnoreCase))
+                {
+                    // RowNumber in xmSQL matches RowNumber in plan (after GUID stripping)
+                    if (nodeColumns.Any(nc => nc.StartsWith("RowNumber", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        overlap++;
+                    }
+                }
+            }
+            return overlap;
         }
 
         /// <summary>
