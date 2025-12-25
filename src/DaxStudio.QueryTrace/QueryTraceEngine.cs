@@ -223,17 +223,28 @@ namespace DaxStudio.QueryTrace
             trace.Events.Add(TraceEventFactory.Create(TraceEventClass.QueryEnd, _connectionManager.SupportedTraceEventClasses[DaxStudioTraceEventClass.QueryEnd]));
             
             // catch the events in the ITraceWatcher
+            Log.Information("SetupTraceEvents: Adding events for trace. Requested events: [{Events}]", string.Join(", ", events));
             foreach (DaxStudioTraceEventClass eventClass in events)
             {
                 TraceEventClass amoEventClass = (TraceEventClass)eventClass;
 
                 // if the Events collection already contains this event or if the connection does not support it then do not add it
-                if (trace.Events.Find(amoEventClass) != null || !_connectionManager.SupportedTraceEventClasses.ContainsKey(eventClass))
+                if (trace.Events.Find(amoEventClass) != null)
+                {
+                    Log.Debug("SetupTraceEvents: Skipping {Event} - already in trace", eventClass);
                     continue;
+                }
+                if (!_connectionManager.SupportedTraceEventClasses.ContainsKey(eventClass))
+                {
+                    Log.Warning("SetupTraceEvents: Skipping {Event} - not supported by connection", eventClass);
+                    continue;
+                }
 
                 var trcEvent = TraceEventFactory.Create(amoEventClass, _connectionManager.SupportedTraceEventClasses[eventClass]);
                 trace.Events.Add(trcEvent);
+                Log.Debug("SetupTraceEvents: Added {Event} to trace", eventClass);
             }
+            Log.Information("SetupTraceEvents: Final trace has {EventCount} events", trace.Events.Count);
             trace.Update(UpdateOptions.Default, UpdateMode.CreateOrReplace);
             Log.Verbose(Constants.LogMessageTemplate, nameof(QueryTraceEngine), nameof(SetupTraceEvents), "exiting");
         }
@@ -249,7 +260,15 @@ namespace DaxStudio.QueryTrace
 
         private XmlNode GetSessionIdFilter(string sessionId, string applicationName, int spid)
         {
+            // Filter allows events matching SessionID, ApplicationName, or SPID.
+            // Also passes through specific event classes that may not have matching session info:
+            // - ExecutionMetrics (timing data)
+            // - VertiPaqSEQueryBegin, VertiPaqSEQueryEnd, VertiPaqSEQueryCacheMatch (SE events for timing correlation)
             string filterTemplate =
+                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
+                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
+                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
+                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
                 "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
                 "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
                         "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
@@ -258,7 +277,13 @@ namespace DaxStudio.QueryTrace
                         "</Or>" +
                         "<Equal><ColumnID>{4}</ColumnID><Value>{5}</Value></Equal>" +
                         "</Or>" +
-                        "<Equal><ColumnID>{6}</ColumnID><Value>{7}</Value></Equal>" +
+                        "<Equal><ColumnID>{6}</ColumnID><Value>{7}</Value></Equal>" +   // ExecutionMetrics
+                        "</Or>" +
+                        "<Equal><ColumnID>{6}</ColumnID><Value>{8}</Value></Equal>" +   // VertiPaqSEQueryBegin
+                        "</Or>" +
+                        "<Equal><ColumnID>{6}</ColumnID><Value>{9}</Value></Equal>" +   // VertiPaqSEQueryEnd
+                        "</Or>" +
+                        "<Equal><ColumnID>{6}</ColumnID><Value>{10}</Value></Equal>" +  // VertiPaqSEQueryCacheMatch
                         "</Or>";
             var filterXml = string.Format(
                 filterTemplate
@@ -268,8 +293,11 @@ namespace DaxStudio.QueryTrace
                 , applicationName //.TrimStart('\"').TrimEnd('\"')
                 , (int)TraceColumn.Spid
                 , spid
-                ,(int)TraceColumn.EventClass
-                ,(int)TraceEventClass.ExecutionMetrics
+                , (int)TraceColumn.EventClass
+                , (int)TraceEventClass.ExecutionMetrics
+                , (int)TraceEventClass.VertiPaqSEQueryBegin
+                , (int)TraceEventClass.VertiPaqSEQueryEnd
+                , (int)TraceEventClass.VertiPaqSEQueryCacheMatch
                 );
             var doc = new XmlDocument();
             doc.LoadXml(filterXml);
