@@ -11,6 +11,10 @@ namespace DaxStudio.UI.Model
         public string Description { get; set; }
         public string Category { get; set; }
         public EngineType Engine { get; set; }
+        /// <summary>
+        /// Optional dax.guide URL for the corresponding DAX function (if applicable).
+        /// </summary>
+        public string DaxGuideUrl { get; set; }
     }
 
     /// <summary>
@@ -48,14 +52,22 @@ namespace DaxStudio.UI.Model
                 DisplayName = "Filter",
                 Description = "Filters rows from an input table based on a condition. Only rows satisfying the predicate are passed through.",
                 Category = "Iterator",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/filter/"
+            },
+            ["DataPostFilter"] = new DaxOperatorInfo
+            {
+                DisplayName = "Data Post Filter",
+                Description = "Filters data after retrieval from storage. Applied after initial scan results are returned.",
+                Category = "Iterator",
                 Engine = EngineType.FormulaEngine
             },
             ["Cache"] = new DaxOperatorInfo
             {
                 DisplayName = "Cache",
-                Description = "Caches intermediate results for reuse. Helps avoid redundant calculations.",
+                Description = "Storage Engine datacache - temporary uncompressed storage for SE query results that the Formula Engine reads. Represents a request made to the Storage Engine.",
                 Category = "Cache",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.StorageEngine
             },
 
             // Spool Operators
@@ -63,6 +75,13 @@ namespace DaxStudio.UI.Model
             {
                 DisplayName = "Spool Iterator",
                 Description = "Iterates over cached/spooled data. Reads from a previously computed result set stored in memory.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["Spool_Iterator<Spool>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Spool Iterator",
+                Description = "Iterates over spooled/materialized data. Reads from cached result set.",
                 Category = "Spool",
                 Engine = EngineType.FormulaEngine
             },
@@ -87,6 +106,99 @@ namespace DaxStudio.UI.Model
                 Category = "Spool",
                 Engine = EngineType.FormulaEngine
             },
+            ["AggregationSpool<Cache>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Cache)",
+                Description = "Cached aggregation spool. Stores aggregation results for repeated access.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<Sum>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Sum)",
+                Description = "Sum aggregation spool. Stores running sum results for efficient access.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<Count>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Count)",
+                Description = "Count aggregation spool. Stores count results for efficient access.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<Min>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Min)",
+                Description = "Min aggregation spool. Stores minimum value results for efficient access.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<Max>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Max)",
+                Description = "Max aggregation spool. Stores maximum value results for efficient access.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<GroupBy>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Group By)",
+                Description = "Group by aggregation spool. Stores grouped aggregation results.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["Spool_UniqueHashLookup"] = new DaxOperatorInfo
+            {
+                DisplayName = "Unique Hash Lookup Spool",
+                Description = "Performs unique hash-based lookup from spooled data. Efficient for single-value lookups.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["Spool_MultiValuedHashLookup"] = new DaxOperatorInfo
+            {
+                DisplayName = "Multi-Valued Hash Lookup Spool",
+                Description = "Performs multi-valued hash-based lookup from spooled data. Returns multiple matching rows.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+
+            // Hash and Join Operators
+            ["InnerHashJoin"] = new DaxOperatorInfo
+            {
+                DisplayName = "Inner Hash Join",
+                Description = "Performs an inner join using hash algorithm. Efficient for joining large datasets.",
+                Category = "Iterator",
+                Engine = EngineType.FormulaEngine
+            },
+            ["HashLookup"] = new DaxOperatorInfo
+            {
+                DisplayName = "Hash Lookup",
+                Description = "Hash-based value lookup operation. Fast O(1) lookup using hash table.",
+                Category = "Iterator",
+                Engine = EngineType.FormulaEngine
+            },
+            ["HashByValue"] = new DaxOperatorInfo
+            {
+                DisplayName = "Hash By Value",
+                Description = "Spools data organized by hash value for efficient lookup operations.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["Extend_Lookup"] = new DaxOperatorInfo
+            {
+                DisplayName = "Extend Lookup",
+                Description = "Extends rows with additional lookup values from related data.",
+                Category = "Iterator",
+                Engine = EngineType.FormulaEngine
+            },
+            ["ApplyRemap"] = new DaxOperatorInfo
+            {
+                DisplayName = "Apply Remap",
+                Description = "Applies column remapping to transform column references.",
+                Category = "Iterator",
+                Engine = EngineType.FormulaEngine
+            },
 
             // Storage Engine Operators
             ["Scan_Vertipaq"] = new DaxOperatorInfo
@@ -101,26 +213,88 @@ namespace DaxStudio.UI.Model
                 DisplayName = "VertiPaq Sum",
                 Description = "Performs SUM aggregation directly in the VertiPaq storage engine. Highly optimized for columnar data.",
                 Category = "Storage Engine",
-                Engine = EngineType.StorageEngine
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/sum/"
             },
             ["Count_Vertipaq"] = new DaxOperatorInfo
             {
                 DisplayName = "VertiPaq Count",
                 Description = "Performs COUNT aggregation directly in the VertiPaq storage engine.",
                 Category = "Storage Engine",
-                Engine = EngineType.StorageEngine
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/count/"
             },
             ["Min_Vertipaq"] = new DaxOperatorInfo
             {
                 DisplayName = "VertiPaq Min",
                 Description = "Performs MIN aggregation directly in the VertiPaq storage engine.",
                 Category = "Storage Engine",
-                Engine = EngineType.StorageEngine
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/min/"
             },
             ["Max_Vertipaq"] = new DaxOperatorInfo
             {
                 DisplayName = "VertiPaq Max",
                 Description = "Performs MAX aggregation directly in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/max/"
+            },
+            ["Average_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq Average",
+                Description = "Performs AVERAGE aggregation directly in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/average/"
+            },
+            ["DistinctCount_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq Distinct Count",
+                Description = "Performs DISTINCTCOUNT aggregation directly in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/distinctcount/"
+            },
+            ["Stdev.S_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq StdDev (Sample)",
+                Description = "Performs sample standard deviation aggregation in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine
+            },
+            ["Stdev.P_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq StdDev (Population)",
+                Description = "Performs population standard deviation aggregation in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine
+            },
+            ["Var.S_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq Variance (Sample)",
+                Description = "Performs sample variance aggregation in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine
+            },
+            ["Var.P_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq Variance (Population)",
+                Description = "Performs population variance aggregation in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine
+            },
+            ["Filter_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq Filter",
+                Description = "Applies Verticalc predicates (complex filter expressions) in the VertiPaq storage engine.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine
+            },
+            ["GroupBy_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq Group By",
+                Description = "Modifies column names and incorporates rollup columns in the VertiPaq storage engine.",
                 Category = "Storage Engine",
                 Engine = EngineType.StorageEngine
             },
@@ -138,6 +312,50 @@ namespace DaxStudio.UI.Model
                 DisplayName = "Calculate",
                 Description = "Evaluates an expression in a modified filter context. Core DAX operation for context transition.",
                 Category = "Logical",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/calculate/"
+            },
+            ["CalculateTable"] = new DaxOperatorInfo
+            {
+                DisplayName = "Calculate Table",
+                Description = "Evaluates a table expression in a modified filter context (CALCULATETABLE).",
+                Category = "Logical",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/calculatetable/"
+            },
+            ["GroupSemiJoin"] = new DaxOperatorInfo
+            {
+                DisplayName = "Group Semi Join",
+                Description = "Join that returns matched rows from the primary table. Used for relationship traversal.",
+                Category = "Relationship",
+                Engine = EngineType.FormulaEngine
+            },
+            ["VarScope"] = new DaxOperatorInfo
+            {
+                DisplayName = "Variable Scope",
+                Description = "Container for variable definitions. Holds VAR declarations for use in expressions.",
+                Category = "Variable",
+                Engine = EngineType.FormulaEngine
+            },
+            ["ScalarVarProxy"] = new DaxOperatorInfo
+            {
+                DisplayName = "Scalar Variable Proxy",
+                Description = "Returns the value of a scalar variable from a VarScope. Used when referencing VAR in expressions.",
+                Category = "Variable",
+                Engine = EngineType.FormulaEngine
+            },
+            ["TableVarProxy"] = new DaxOperatorInfo
+            {
+                DisplayName = "Table Variable Proxy",
+                Description = "Returns the value of a table variable from a VarScope. Used when referencing table VAR in expressions.",
+                Category = "Variable",
+                Engine = EngineType.FormulaEngine
+            },
+            ["Proxy"] = new DaxOperatorInfo
+            {
+                DisplayName = "Variable Proxy",
+                Description = "Physical iterator that references a variable. Provides access to variable values during query execution.",
+                Category = "Variable",
                 Engine = EngineType.FormulaEngine
             },
             ["SumX"] = new DaxOperatorInfo
@@ -145,14 +363,16 @@ namespace DaxStudio.UI.Model
                 DisplayName = "Sum X (Iterator)",
                 Description = "Iterates over a table and sums the result of an expression evaluated for each row. Row-by-row aggregation.",
                 Category = "Aggregation",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/sumx/"
             },
             ["CountRows"] = new DaxOperatorInfo
             {
                 DisplayName = "Count Rows",
                 Description = "Counts the number of rows in a table.",
                 Category = "Aggregation",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/countrows/"
             },
             ["DependOnCols"] = new DaxOperatorInfo
             {
@@ -175,35 +395,40 @@ namespace DaxStudio.UI.Model
                 DisplayName = "Previous Quarter",
                 Description = "Time intelligence function that shifts the filter context to the previous quarter.",
                 Category = "Time Intelligence",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/previousquarter/"
             },
             ["PreviousMonth"] = new DaxOperatorInfo
             {
                 DisplayName = "Previous Month",
                 Description = "Time intelligence function that shifts the filter context to the previous month.",
                 Category = "Time Intelligence",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/previousmonth/"
             },
             ["PreviousYear"] = new DaxOperatorInfo
             {
                 DisplayName = "Previous Year",
                 Description = "Time intelligence function that shifts the filter context to the previous year.",
                 Category = "Time Intelligence",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/previousyear/"
             },
             ["SamePeriodLastYear"] = new DaxOperatorInfo
             {
                 DisplayName = "Same Period Last Year",
                 Description = "Time intelligence function that returns the same period in the previous year.",
                 Category = "Time Intelligence",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/sameperiodlastyear/"
             },
             ["DatesBetween"] = new DaxOperatorInfo
             {
                 DisplayName = "Dates Between",
                 Description = "Returns a table of dates between two specified dates.",
                 Category = "Time Intelligence",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/datesbetween/"
             },
 
             // Join and Relationship Operators
@@ -212,21 +437,24 @@ namespace DaxStudio.UI.Model
                 DisplayName = "Lookup Value",
                 Description = "Retrieves a value from a related table based on matching criteria. Similar to VLOOKUP.",
                 Category = "Lookup",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/lookupvalue/"
             },
             ["RelatedTable"] = new DaxOperatorInfo
             {
                 DisplayName = "Related Table",
                 Description = "Returns a table of related rows from the many side of a relationship.",
                 Category = "Relationship",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/relatedtable/"
             },
             ["Related"] = new DaxOperatorInfo
             {
                 DisplayName = "Related",
                 Description = "Returns a related value from the one side of a relationship.",
                 Category = "Relationship",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/related/"
             },
 
             // Physical Operator Types
@@ -272,70 +500,80 @@ namespace DaxStudio.UI.Model
                 DisplayName = "Union",
                 Description = "Combines multiple tables into one, appending rows.",
                 Category = "Set",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/union/"
             },
             ["Except"] = new DaxOperatorInfo
             {
                 DisplayName = "Except",
                 Description = "Returns rows from the first table that don't exist in the second table.",
                 Category = "Set",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/except/"
             },
             ["Intersect"] = new DaxOperatorInfo
             {
                 DisplayName = "Intersect",
                 Description = "Returns rows that exist in both tables.",
                 Category = "Set",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/intersect/"
             },
             ["Distinct"] = new DaxOperatorInfo
             {
                 DisplayName = "Distinct",
                 Description = "Returns unique rows from a table, removing duplicates.",
                 Category = "Set",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/distinct/"
             },
             ["Values"] = new DaxOperatorInfo
             {
                 DisplayName = "Values",
                 Description = "Returns distinct values from a column, including blank if present in the data.",
                 Category = "Set",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/values/"
             },
             ["All"] = new DaxOperatorInfo
             {
                 DisplayName = "All",
                 Description = "Removes filters from a table or column. Returns all rows ignoring any filters.",
                 Category = "Filter Modifier",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/all/"
             },
             ["AllSelected"] = new DaxOperatorInfo
             {
                 DisplayName = "All Selected",
                 Description = "Removes filters from a table while keeping external filters from slicers/visuals.",
                 Category = "Filter Modifier",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/allselected/"
             },
             ["TopN"] = new DaxOperatorInfo
             {
                 DisplayName = "Top N",
                 Description = "Returns the top N rows from a table based on a specified expression.",
                 Category = "Filter",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/topn/"
             },
             ["GroupBy"] = new DaxOperatorInfo
             {
                 DisplayName = "Group By",
                 Description = "Groups rows by specified columns and allows aggregation calculations.",
                 Category = "Aggregation",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/groupby/"
             },
             ["Summarize"] = new DaxOperatorInfo
             {
                 DisplayName = "Summarize",
                 Description = "Creates a summary table grouped by specified columns with optional aggregations.",
                 Category = "Aggregation",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/summarize/"
             },
 
             // Copy and Data Movement
@@ -360,42 +598,48 @@ namespace DaxStudio.UI.Model
                 DisplayName = ">",
                 Description = "Compares if the left operand is greater than the right operand.",
                 Category = "Comparison",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/greater-than/"
             },
             ["GreaterOrEqualTo"] = new DaxOperatorInfo
             {
                 DisplayName = ">=",
                 Description = "Compares if the left operand is greater than or equal to the right operand.",
                 Category = "Comparison",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/greater-than-or-equal-to/"
             },
             ["LessThan"] = new DaxOperatorInfo
             {
                 DisplayName = "<",
                 Description = "Compares if the left operand is less than the right operand.",
                 Category = "Comparison",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/less-than/"
             },
             ["LessOrEqualTo"] = new DaxOperatorInfo
             {
                 DisplayName = "<=",
                 Description = "Compares if the left operand is less than or equal to the right operand.",
                 Category = "Comparison",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/less-than-or-equal-to/"
             },
             ["Equal"] = new DaxOperatorInfo
             {
                 DisplayName = "=",
                 Description = "Compares if the left operand equals the right operand.",
                 Category = "Comparison",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/equal-to/"
             },
             ["NotEqual"] = new DaxOperatorInfo
             {
                 DisplayName = "<>",
                 Description = "Compares if the left operand does not equal the right operand.",
                 Category = "Comparison",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/not-equal-to/"
             },
 
             // Value/Reference Operators (typically children of comparisons)
@@ -419,6 +663,62 @@ namespace DaxStudio.UI.Model
                 Description = "Converts a value from one data type to another.",
                 Category = "Value",
                 Engine = EngineType.FormulaEngine
+            },
+            ["Variant->Numeric/Date"] = new DaxOperatorInfo
+            {
+                DisplayName = "Variant to Numeric/Date",
+                Description = "Coerces a Variant type (from conditional expressions returning different types) to Numeric or Date.",
+                Category = "Type Coercion",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/dt/variant/"
+            },
+            ["Variant->String"] = new DaxOperatorInfo
+            {
+                DisplayName = "Variant to String",
+                Description = "Coerces a Variant type (from conditional expressions returning different types) to String.",
+                Category = "Type Coercion",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/dt/variant/"
+            },
+            ["Median"] = new DaxOperatorInfo
+            {
+                DisplayName = "Median",
+                Description = "Calculates the median value (50th percentile) of a column or expression.",
+                Category = "Aggregation",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/median/"
+            },
+            ["Multiply"] = new DaxOperatorInfo
+            {
+                DisplayName = "Multiply",
+                Description = "Multiplies two values together. Used for arithmetic calculations like quantity × price.",
+                Category = "Arithmetic",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/multiplication/"
+            },
+            ["Subtract"] = new DaxOperatorInfo
+            {
+                DisplayName = "Subtract",
+                Description = "Subtracts the right operand from the left operand.",
+                Category = "Arithmetic",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/subtraction/"
+            },
+            ["Add"] = new DaxOperatorInfo
+            {
+                DisplayName = "Add",
+                Description = "Adds two values together.",
+                Category = "Arithmetic",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/addition/"
+            },
+            ["Divide"] = new DaxOperatorInfo
+            {
+                DisplayName = "Divide",
+                Description = "Divides the left operand by the right operand.",
+                Category = "Arithmetic",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/division/"
             }
         };
 
@@ -484,6 +784,17 @@ namespace DaxStudio.UI.Model
         {
             var info = GetOperatorInfo(operatorName);
             return info?.Category ?? "Unknown";
+        }
+
+        /// <summary>
+        /// Gets the dax.guide URL for an operator, if applicable.
+        /// </summary>
+        /// <param name="operatorName">The raw operator name</param>
+        /// <returns>dax.guide URL or null if not available</returns>
+        public static string GetDaxGuideUrl(string operatorName)
+        {
+            var info = GetOperatorInfo(operatorName);
+            return info?.DaxGuideUrl;
         }
 
         /// <summary>

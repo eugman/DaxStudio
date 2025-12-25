@@ -101,6 +101,7 @@ namespace DaxStudio.UI.Services
         /// </summary>
         public async Task<EnrichedQueryPlan> EnrichLogicalPlanAsync(
             IEnumerable<LogicalQueryPlanRow> rawPlan,
+            IEnumerable<TraceStorageEngineEvent> timingEvents,
             IColumnNameResolver columnResolver,
             string activityId)
         {
@@ -132,8 +133,24 @@ namespace DaxStudio.UI.Services
                     ResolveColumnNames(nodes, columnResolver);
                 }
 
+                // Correlate timing data (xmSQL, durations) from SE events
+                CorrelateTimingData(plan, timingEvents?.ToList());
+
+                // Assign engine types based on operator dictionary
+                AssignEngineTypes(nodes);
+
+                // Detect performance issues (same as physical plan)
+                var issues = _issueDetector.DetectIssues(plan);
+                foreach (var issue in issues)
+                {
+                    plan.Issues.Add(issue);
+                    var affectedNode = plan.FindNodeById(issue.AffectedNodeId);
+                    affectedNode?.Issues.Add(issue);
+                }
+
                 plan.State = PlanState.Enriched;
-                Log.Debug("PlanEnrichmentService: Enriched logical plan with {NodeCount} nodes", plan.NodeCount);
+                Log.Debug("PlanEnrichmentService: Enriched logical plan with {NodeCount} nodes and {IssueCount} issues",
+                    plan.NodeCount, plan.IssueCount);
 
                 return plan;
             }).ConfigureAwait(false);
@@ -238,10 +255,21 @@ namespace DaxStudio.UI.Services
             long totalSeCpu = 0;
             int cacheHits = 0;
 
-            // Build lookup of Scan_Vertipaq nodes by table name for matching
+            // Build lookup of Storage Engine nodes by table name for matching
             // Operations look like: "Scan_Vertipaq: ... ('Customer'[First Name]) ..."
+            // Also include Sum_Vertipaq, Count_Vertipaq, etc.
             var scanNodesByTable = new Dictionary<string, EnrichedPlanNode>(StringComparer.OrdinalIgnoreCase);
-            foreach (var node in plan.AllNodes.Where(n => n.Operation != null && n.Operation.Contains("Scan_Vertipaq")))
+            foreach (var node in plan.AllNodes.Where(n => n.Operation != null &&
+                (n.Operation.Contains("Scan_Vertipaq") ||
+                 n.Operation.Contains("Sum_Vertipaq") ||
+                 n.Operation.Contains("Count_Vertipaq") ||
+                 n.Operation.Contains("Min_Vertipaq") ||
+                 n.Operation.Contains("Max_Vertipaq") ||
+                 n.Operation.Contains("Average_Vertipaq") ||
+                 n.Operation.Contains("GroupBy_Vertipaq") ||
+                 n.Operation.Contains("Filter_Vertipaq") ||
+                 n.Operation.Contains("DistinctCount_Vertipaq") ||
+                 n.Operation.Contains("_Vertipaq"))))  // Catch-all for any Vertipaq operator
             {
                 var tableName = ExtractTableNameFromOperation(node.Operation);
                 if (!string.IsNullOrEmpty(tableName) && !scanNodesByTable.ContainsKey(tableName))
@@ -254,15 +282,25 @@ namespace DaxStudio.UI.Services
             Log.Information(">>> PlanEnrichmentService: Built table lookup with {Count} entries: [{Tables}]",
                 scanNodesByTable.Count, string.Join(", ", scanNodesByTable.Keys));
 
-            // Process non-internal events first (they have EstimatedRows)
+            // Log all timing events for debugging
+            for (int i = 0; i < timingEvents.Count; i++)
+            {
+                var evt = timingEvents[i];
+                var queryPreview = (evt.Query ?? evt.TextData)?.Replace("\n", " ").Replace("\r", "");
+                if (queryPreview?.Length > 80) queryPreview = queryPreview.Substring(0, 80) + "...";
+                Log.Information(">>> PlanEnrichmentService: Event[{Index}] ObjectName='{ObjectName}', IsInternal={IsInternal}, Query='{Query}'",
+                    i, evt.ObjectName ?? "(null)", evt.IsInternalEvent, queryPreview ?? "(null)");
+            }
+
+            // Process ALL events for xmSQL correlation (internal events can also have xmSQL)
             var userEvents = timingEvents.Where(e => !e.IsInternalEvent).ToList();
             var internalEvents = timingEvents.Where(e => e.IsInternalEvent).ToList();
 
             Log.Information(">>> PlanEnrichmentService: {UserCount} user events, {InternalCount} internal events",
                 userEvents.Count, internalEvents.Count);
 
-            // Match user events to scan nodes by ObjectName
-            foreach (var evt in userEvents)
+            // Match ALL timing events to scan nodes by ObjectName or xmSQL FROM clause
+            foreach (var evt in timingEvents)
             {
                 if (evt.Duration.HasValue) totalSeDuration += evt.Duration.Value;
                 if (evt.CpuTime.HasValue) totalSeCpu += evt.CpuTime.Value;
@@ -270,11 +308,27 @@ namespace DaxStudio.UI.Services
                 bool isCacheHit = evt.Subclass == DaxStudioTraceEventSubclass.VertiPaqCacheExactMatch;
                 if (isCacheHit) cacheHits++;
 
-                // Match by ObjectName to Scan_Vertipaq nodes
-                if (!string.IsNullOrEmpty(evt.ObjectName) && scanNodesByTable.TryGetValue(evt.ObjectName, out var node))
-                {
-                    Log.Information(">>> PlanEnrichmentService: MATCHED event '{ObjectName}' to node {NodeId}", evt.ObjectName, node.NodeId);
+                // Try to match by ObjectName first
+                string matchKey = evt.ObjectName;
+                EnrichedPlanNode node = null;
 
+                if (!string.IsNullOrEmpty(matchKey) && scanNodesByTable.TryGetValue(matchKey, out node))
+                {
+                    Log.Information(">>> PlanEnrichmentService: MATCHED by ObjectName '{ObjectName}' to node {NodeId}", matchKey, node.NodeId);
+                }
+                else
+                {
+                    // Fallback: extract table name from xmSQL query (FROM 'TableName' pattern)
+                    var queryTableName = ExtractTableNameFromXmSql(evt.Query ?? evt.TextData);
+                    if (!string.IsNullOrEmpty(queryTableName) && scanNodesByTable.TryGetValue(queryTableName, out node))
+                    {
+                        matchKey = queryTableName;
+                        Log.Information(">>> PlanEnrichmentService: MATCHED by xmSQL FROM clause '{TableName}' to node {NodeId}", matchKey, node.NodeId);
+                    }
+                }
+
+                if (node != null)
+                {
                     // Populate xmSQL data
                     node.XmSql = evt.TextData ?? evt.Query;
                     node.ResolvedXmSql = evt.Query ?? evt.TextData;
@@ -284,7 +338,7 @@ namespace DaxStudio.UI.Services
                     node.EstimatedKBytes = evt.EstimatedKBytes;
                     node.IsCacheHit = isCacheHit;
                     node.EngineType = EngineType.StorageEngine;
-                    node.ObjectName = evt.ObjectName;
+                    node.ObjectName = matchKey;
 
                     // RECONCILE ROW COUNTS: Use EstimatedRows from server timing when plan shows 0
                     if ((!node.Records.HasValue || node.Records == 0) && evt.EstimatedRows.HasValue && evt.EstimatedRows > 0)
@@ -306,20 +360,18 @@ namespace DaxStudio.UI.Services
                 }
                 else
                 {
-                    Log.Debug(">>> PlanEnrichmentService: No node match for event ObjectName='{ObjectName}'", evt.ObjectName ?? "(null)");
+                    Log.Debug(">>> PlanEnrichmentService: No node match for event ObjectName='{ObjectName}', Query starts with '{QueryStart}'",
+                        evt.ObjectName ?? "(null)",
+                        (evt.Query ?? evt.TextData)?.Substring(0, Math.Min(50, (evt.Query ?? evt.TextData)?.Length ?? 0)) ?? "(null)");
                 }
             }
 
-            // Still aggregate timing from internal events (don't match to nodes)
-            foreach (var evt in internalEvents)
-            {
-                if (evt.Duration.HasValue) totalSeDuration += evt.Duration.Value;
-                if (evt.CpuTime.HasValue) totalSeCpu += evt.CpuTime.Value;
-            }
+            // Note: All events (user + internal) are now processed in the main loop above
 
             plan.StorageEngineDurationMs = totalSeDuration;
             plan.StorageEngineCpuMs = totalSeCpu;
             plan.CacheHits = cacheHits;
+            plan.StorageEngineQueryCount = userEvents.Count + internalEvents.Count;
 
             // FE time = Total - SE time (approximation)
             if (plan.TotalDurationMs > 0)
@@ -327,8 +379,8 @@ namespace DaxStudio.UI.Services
                 plan.FormulaEngineDurationMs = Math.Max(0, plan.TotalDurationMs - totalSeDuration);
             }
 
-            Log.Information(">>> PlanEnrichmentService: Correlation complete. SE duration={SeDuration}ms, Cache hits={CacheHits}",
-                totalSeDuration, cacheHits);
+            Log.Information(">>> PlanEnrichmentService: Correlation complete. SE duration={SeDuration}ms, SE queries={SeQueryCount}, Cache hits={CacheHits}",
+                totalSeDuration, plan.StorageEngineQueryCount, cacheHits);
         }
 
         /// <summary>
@@ -343,6 +395,24 @@ namespace DaxStudio.UI.Services
 
             // Match 'TableName'[ColumnName] pattern
             var match = Regex.Match(operation, @"'([^']+)'\s*\[");
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Extracts the table name from an xmSQL query's FROM clause.
+        /// Matches patterns like: FROM 'Date' or FROM 'Internet Sales'
+        /// </summary>
+        private string ExtractTableNameFromXmSql(string xmSql)
+        {
+            if (string.IsNullOrEmpty(xmSql)) return null;
+
+            // Match FROM 'TableName' pattern (case-insensitive)
+            var match = Regex.Match(xmSql, @"\bFROM\s+'([^']+)'", RegexOptions.IgnoreCase);
             if (match.Success)
             {
                 return match.Groups[1].Value;
@@ -369,21 +439,105 @@ namespace DaxStudio.UI.Services
         {
             foreach (var node in nodes)
             {
-                // Determine engine type based on operation keywords
-                var op = node.Operation?.ToUpperInvariant() ?? string.Empty;
+                // Skip if engine type is already set (e.g., from xmSQL correlation)
+                if (node.EngineType != EngineType.Unknown)
+                    continue;
 
-                if (op.Contains("VERTIPAQ") || op.Contains("SCAN_VERTIPAQ") ||
-                    op.Contains("CACHE") || op.Contains("DIRECTQUERY"))
+                // Extract operator name from operation string
+                var operatorName = ExtractOperatorName(node.Operation);
+                if (string.IsNullOrEmpty(operatorName))
+                    continue;
+
+                // First, try to get engine type from dictionary (most accurate)
+                var operatorInfo = DaxOperatorDictionary.GetOperatorInfo(operatorName);
+                if (operatorInfo != null && operatorInfo.Engine != EngineType.Unknown)
+                {
+                    node.EngineType = operatorInfo.Engine;
+                    continue;
+                }
+
+                // Fallback: pattern-based heuristic for operators not in dictionary
+                var op = node.Operation?.ToUpperInvariant() ?? string.Empty;
+                if (op.Contains("VERTIPAQ") || op.Contains("CACHE") || op.Contains("DIRECTQUERY"))
                 {
                     node.EngineType = EngineType.StorageEngine;
                 }
-                else if (op.Contains("ADDCOLUMNS") || op.Contains("SUMMARIZE") ||
-                         op.Contains("CALCULATE") || op.Contains("FILTER") ||
-                         op.Contains("CROSSJOIN") || op.Contains("CALLBACK"))
+                else
                 {
+                    // Default to Formula Engine when operator type is unknown
+                    // (most query plan operations are FE-coordinated)
                     node.EngineType = EngineType.FormulaEngine;
                 }
             }
+        }
+
+        /// <summary>
+        /// Extracts the operator name from an operation string.
+        /// Handles formats like "Operator: details", "'Table'[Col]: Operator details", etc.
+        /// </summary>
+        private string ExtractOperatorName(string operation)
+        {
+            if (string.IsNullOrWhiteSpace(operation))
+                return null;
+
+            // Check if this is a column reference format: 'Table'[Column]: Operator
+            if (operation.StartsWith("'"))
+            {
+                // Find the colon that separates the column reference from the operator
+                int bracketDepth = 0;
+                bool inQuote = false;
+
+                for (int i = 0; i < operation.Length; i++)
+                {
+                    char c = operation[i];
+                    if (c == '\'' && bracketDepth == 0)
+                        inQuote = !inQuote;
+                    else if (!inQuote)
+                    {
+                        if (c == '[') bracketDepth++;
+                        else if (c == ']') bracketDepth--;
+                        else if (c == ':' && bracketDepth == 0)
+                        {
+                            // Extract operator name after the colon
+                            var afterColon = operation.Substring(i + 1).TrimStart();
+                            var spaceIndex = afterColon.IndexOf(' ');
+                            return spaceIndex > 0 ? afterColon.Substring(0, spaceIndex) : afterColon;
+                        }
+                    }
+                }
+                return null; // Column reference with no operator
+            }
+
+            // Standard format: "Operator: Details" or "Operator Details"
+            // Also handle variable prefix pattern: "__DS0Core: Union: details"
+            var colonIdx = operation.IndexOf(':');
+            if (colonIdx > 0)
+            {
+                var firstSpace = operation.IndexOf(' ');
+                if (firstSpace > 0 && firstSpace < colonIdx)
+                    return operation.Substring(0, firstSpace);
+
+                var beforeColon = operation.Substring(0, colonIdx);
+
+                // Check for variable name pattern: __VarName or _VarName
+                // These are variable names, not operators - look for real operator after second colon
+                if (beforeColon.StartsWith("__") || (beforeColon.StartsWith("_") && !beforeColon.StartsWith("_Vertipaq")))
+                {
+                    var afterFirstColon = operation.Substring(colonIdx + 1).TrimStart();
+                    var secondColonIdx = afterFirstColon.IndexOf(':');
+                    if (secondColonIdx > 0)
+                    {
+                        // Extract the actual operator (between first and second colon)
+                        return afterFirstColon.Substring(0, secondColonIdx).Trim();
+                    }
+                }
+
+                return beforeColon;
+            }
+
+            // No colon, use first space
+            var idx = operation.IndexOf(' ');
+            return idx > 0 ? operation.Substring(0, idx) : operation;
         }
 
         /// <summary>
