@@ -140,9 +140,13 @@
     <Compile Include="xmSqlProcessing.cs" />
     <Compile Include="_TestConfig.cs" />
     <Compile Include="VisualQueryPlan\ColumnNameResolverTests.cs" />
+    <Compile Include="VisualQueryPlan\DaxOperatorDictionaryTests.cs" />
+    <Compile Include="VisualQueryPlan\FixtureIntegrationTests.cs" />
     <Compile Include="VisualQueryPlan\PerformanceIssueDetectorTests.cs" />
     <Compile Include="VisualQueryPlan\PlanEnrichmentServiceTests.cs" />
     <Compile Include="VisualQueryPlan\PlanNodeViewModelTests.cs" />
+    <Compile Include="VisualQueryPlan\PropertyExtractionTests.cs" />
+    <Compile Include="VisualQueryPlan\XmSqlParserTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ADOTabular\DaxStudio.ADOTabular.csproj">

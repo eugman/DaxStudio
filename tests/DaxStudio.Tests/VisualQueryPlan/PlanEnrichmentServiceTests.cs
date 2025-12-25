@@ -1,4 +1,5 @@
 using Caliburn.Micro;
+using DaxStudio.QueryTrace;
 using DaxStudio.UI.Model;
 using DaxStudio.UI.Services;
 using DaxStudio.UI.ViewModels;
@@ -102,6 +103,7 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var result = await _service.EnrichLogicalPlanAsync(
                 rawPlan,
+                timingEvents: null,
                 columnResolver: null,
                 activityId: "test-logical");
 
@@ -422,6 +424,61 @@ namespace DaxStudio.Tests.VisualQueryPlan
             Assert.IsTrue(scanNode.XmSql.Contains("Product"), "XmSql should contain the query text");
         }
 
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SetsStorageEngineQueryCount()
+        {
+            // Arrange
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Product'[Color])", 1);
+            rows.Add(row1);
+
+            // Subclass determines IsInternalEvent - VertiPaqScanInternal = internal, others = not internal
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent { Duration = 10, ObjectName = "Product", Subclass = DaxStudioTraceEventSubclass.VertiPaqScan },
+                new TraceStorageEngineEvent { Duration = 5, ObjectName = "Customer", Subclass = DaxStudioTraceEventSubclass.VertiPaqScan },
+                new TraceStorageEngineEvent { Duration = 3, ObjectName = "Internal", Subclass = DaxStudioTraceEventSubclass.VertiPaqScanInternal }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert - should count both user and internal events
+            Assert.AreEqual(3, result.StorageEngineQueryCount, "Should count all SE queries (user + internal)");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SetsCacheHitCount()
+        {
+            // Arrange
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Product'[Color])", 1);
+            rows.Add(row1);
+
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent { Duration = 10, ObjectName = "Product", Subclass = DaxStudioTraceEventSubclass.VertiPaqCacheExactMatch },
+                new TraceStorageEngineEvent { Duration = 5, ObjectName = "Customer", Subclass = DaxStudioTraceEventSubclass.VertiPaqScan }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            Assert.AreEqual(1, result.CacheHits, "Should count only cache hit events");
+            Assert.AreEqual(2, result.StorageEngineQueryCount, "Should count all SE queries");
+        }
+
         #region Cross-Reference Tests
 
         [TestMethod]
@@ -512,6 +569,198 @@ namespace DaxStudio.Tests.VisualQueryPlan
             Assert.AreEqual(100, logicalNode.CpuTimeMs, "CPU time should be inherited");
             Assert.AreEqual(8, logicalNode.Parallelism, "Parallelism should be inherited");
             Assert.AreEqual("SELECT FROM 'Sales'...", logicalNode.XmSql, "xmSQL should be inherited");
+        }
+
+        #endregion
+
+        #region Logical Plan Correlation Tests
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_WithTimingEvents_CorrelatesXmSql()
+        {
+            // Arrange - logical plan with Scan_Vertipaq
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row1 = new LogicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("Sum_Vertipaq: ScaLogOp MeasureRef=[Total]", 1);
+            rows.Add(row1);
+
+            var row2 = new LogicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(106)('Internet Sales'[Sales Amount])", 2);
+            rows.Add(row2);
+
+            // Timing event with ObjectName for matching
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 75,
+                    CpuTime = 40,
+                    ObjectName = "Internet Sales",
+                    Query = "SELECT 'Internet Sales'[Sales Amount] FROM 'Internet Sales'"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-logical-correlation");
+
+            // Assert
+            var scanNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("Scan_Vertipaq"));
+            Assert.IsNotNull(scanNode, "Should find Scan_Vertipaq node");
+            Assert.AreEqual(75, scanNode.DurationMs, "Duration should be correlated from timing event");
+            Assert.AreEqual(40, scanNode.CpuTimeMs, "CPU time should be correlated from timing event");
+            Assert.IsNotNull(scanNode.XmSql, "XmSql should be populated");
+            Assert.IsTrue(scanNode.XmSql.Contains("Internet Sales"), "XmSql should contain query text");
+        }
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_ScanVertipaq_GetsStorageEngineType()
+        {
+            // Arrange - logical plan with Scan_Vertipaq
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(1)('Customer'[Name])", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents: null,
+                columnResolver: null,
+                activityId: "test-engine-type");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, scanNode.EngineType,
+                "Scan_Vertipaq should be marked as Storage Engine");
+        }
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_SumVertipaq_GetsStorageEngineType()
+        {
+            // Arrange - logical plan with Sum_Vertipaq
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Sum_Vertipaq: ScaLogOp MeasureRef=[Total Sales]", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents: null,
+                columnResolver: null,
+                activityId: "test-engine-type");
+
+            // Assert
+            var sumNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, sumNode.EngineType,
+                "Sum_Vertipaq should be marked as Storage Engine");
+        }
+
+        #endregion
+
+        #region xmSQL Fallback Correlation Tests
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_WithEmptyObjectName_MatchesByXmSqlFromClause()
+        {
+            // Arrange - timing event with empty ObjectName but xmSQL with FROM clause
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Date'[Date])", 1);
+            rows.Add(row);
+
+            // Event with empty ObjectName but xmSQL containing FROM 'Date'
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 50,
+                    CpuTime = 25,
+                    ObjectName = null, // Empty ObjectName
+                    Query = "SELECT 'Date'[Date] FROM 'Date'"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-xmsql-fallback");
+
+            // Assert - should match by FROM clause extraction
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(50, scanNode.DurationMs, "Should match by xmSQL FROM clause when ObjectName is empty");
+            Assert.IsNotNull(scanNode.XmSql, "XmSql should be populated");
+        }
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_WithMismatchedObjectName_MatchesByXmSqlFromClause()
+        {
+            // Arrange - timing event with different ObjectName but matching xmSQL FROM
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Internet Sales'[Amount])", 1);
+            rows.Add(row);
+
+            // Event with wrong ObjectName but correct xmSQL FROM clause
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 75,
+                    ObjectName = "SomeOtherTable", // Doesn't match
+                    Query = "SELECT 'Internet Sales'[Amount] FROM 'Internet Sales'"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-xmsql-mismatch");
+
+            // Assert - should match by FROM clause as fallback
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(75, scanNode.DurationMs, "Should fallback to xmSQL FROM clause when ObjectName doesn't match");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithEmptyObjectName_MatchesByXmSqlFromClause()
+        {
+            // Arrange - physical plan with empty ObjectName timing event
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Customer'[Name])", 1);
+            rows.Add(row);
+
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    ObjectName = "", // Empty string
+                    Query = "SET DC_KIND=\"AUTO\";\nSELECT 'Customer'[Name] FROM 'Customer';"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-physical-xmsql-fallback");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(100, scanNode.DurationMs, "Physical plan should also use xmSQL FROM fallback");
+            Assert.IsNotNull(scanNode.XmSql);
         }
 
         #endregion

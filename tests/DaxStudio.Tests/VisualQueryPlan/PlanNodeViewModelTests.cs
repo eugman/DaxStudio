@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using DaxStudio.UI.Model;
 using DaxStudio.UI.ViewModels;
@@ -162,17 +163,18 @@ namespace DaxStudio.Tests.VisualQueryPlan
         #region Display Text Tests
 
         [TestMethod]
-        public void DisplayText_LongOperatorName_Truncates()
+        public void DisplayText_LongOperatorName_NotTruncated()
         {
-            // Arrange
+            // Arrange - word wrapping is handled by XAML, so no truncation in code
             var node = CreateNodeWithOperation("VeryLongOperatorNameThatExceedsTwentyFiveCharacters: Details");
 
             // Act
             var displayText = node.DisplayText;
 
-            // Assert
-            Assert.IsTrue(displayText.Length <= 25, "Display text should be truncated to 25 chars");
-            Assert.IsTrue(displayText.EndsWith("..."), "Should end with ellipsis when truncated");
+            // Assert - display text should contain formatted name (no code truncation)
+            // FormatUnknownOperator converts "VeryLong..." to "Very Long..." (spaces added)
+            Assert.IsTrue(displayText.Contains("Very Long Operator"), "Display text should preserve formatted operator name");
+            Assert.IsFalse(displayText.EndsWith("..."), "Should not add ellipsis - word wrap handles long text");
         }
 
         [TestMethod]
@@ -1030,6 +1032,38 @@ namespace DaxStudio.Tests.VisualQueryPlan
             Assert.AreEqual(string.Empty, node.MeasureReference);
         }
 
+        [TestMethod]
+        public void MeasureReference_LogOpSumVertipaq_FiltersOutIterCols()
+        {
+            // Arrange - Operation where IterCols follows Sum_Vertipaq (common pattern)
+            // This was incorrectly extracting "IterCols" as a measure reference
+            var enrichedNode = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11"
+            };
+            var node = new PlanNodeViewModel(enrichedNode);
+
+            // Act & Assert - Should NOT extract IterCols as a measure reference
+            Assert.AreEqual(string.Empty, node.MeasureReference, "IterCols should not be extracted as measure reference");
+            Assert.IsFalse(node.HasMeasureReference, "HasMeasureReference should be false");
+        }
+
+        [TestMethod]
+        public void MeasureReference_LogOpCountVertipaq_FiltersOutLookupCols()
+        {
+            // Arrange - Operation where LookupCols follows Count_Vertipaq
+            var enrichedNode = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "SpoolLookup: LookupPhyOp LogOp=Count_Vertipaq LookupCols(0)('Sales'[OrderID])"
+            };
+            var node = new PlanNodeViewModel(enrichedNode);
+
+            // Act & Assert - Should NOT extract LookupCols as a measure reference
+            Assert.AreEqual(string.Empty, node.MeasureReference, "LookupCols should not be extracted as measure reference");
+        }
+
         #endregion
 
         #region Node Collapsing Tests
@@ -1452,6 +1486,1203 @@ namespace DaxStudio.Tests.VisualQueryPlan
                 ResolvedOperation = operation
             };
             return new PlanNodeViewModel(enrichedNode);
+        }
+
+        #endregion
+
+        #region Node Folding Tests (BuildTree)
+
+        [TestMethod]
+        public void BuildTree_ColumnReferenceWithScaLogOp_IsFolded()
+        {
+            // Arrange - column reference node with ScaLogOp should be folded
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "Sum_Vertipaq: ScaLogOp MeasureRef=[Total]"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "'Internet Sales'[Sales Amount]: ScaLogOp DependOnCols(106)('Internet Sales'[Sales Amount]) Currency"
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - column reference node should be folded (not in children)
+            Assert.IsNotNull(root);
+            Assert.AreEqual(0, root.Children.Count, "Column reference with ScaLogOp should be folded");
+        }
+
+        [TestMethod]
+        public void BuildTree_ScanVertipaq_IsNotFolded()
+        {
+            // Arrange - Scan_Vertipaq should NOT be folded (it's an important SE operator)
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "Sum_Vertipaq: ScaLogOp MeasureRef=[Total]"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "Scan_Vertipaq: RelLogOp RequiredCols(106)('Internet Sales'[Sales Amount])"
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Scan_Vertipaq should NOT be folded
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.Children.Count, "Scan_Vertipaq should NOT be folded");
+            Assert.IsTrue(root.Children[0].Operation.Contains("Scan_Vertipaq"));
+        }
+
+        [TestMethod]
+        public void BuildTree_ColumnReferenceWithRelLogOp_IsFolded()
+        {
+            // Arrange - column reference node with RelLogOp should also be folded
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "Filter: RelLogOp"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "'Customer'[Region]: RelLogOp DependOnCols(1)('Customer'[Region])"
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - column reference with RelLogOp should be folded
+            Assert.IsNotNull(root);
+            Assert.AreEqual(0, root.Children.Count, "Column reference with RelLogOp should be folded");
+        }
+
+        [TestMethod]
+        public void BuildTree_RegularOperator_IsNotFolded()
+        {
+            // Arrange - regular operators like AddColumns, Filter should NOT be folded
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "AddColumns: RelLogOp"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "Filter: RelLogOp DependOnCols()()"
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - regular operators should NOT be folded
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.Children.Count, "Regular operators should NOT be folded");
+        }
+
+        [TestMethod]
+        public void BuildTree_FoldedNodeChildren_ArePromotedToGrandparent()
+        {
+            // Arrange - when a node is folded, its children should be promoted
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "Sum_Vertipaq: ScaLogOp"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "'Sales'[Amount]: ScaLogOp" // This will be folded
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Level = 2,
+                        Operation = "Scan_Vertipaq: RelLogOp" // This is child of folded node
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[1].Children.Add(plan.AllNodes[2]);
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Scan_Vertipaq should become direct child of Sum_Vertipaq
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.Children.Count, "Grandchild should be promoted when parent is folded");
+            Assert.IsTrue(root.Children[0].Operation.Contains("Scan_Vertipaq"),
+                "Scan_Vertipaq should be promoted to root's children");
+        }
+
+        #endregion
+
+        #region Filter Predicate Rollup Tests
+
+        [TestMethod]
+        public void BuildTree_FilterWithComparison_RollsUpPredicate()
+        {
+            // Arrange - Filter with GreaterThan comparison
+            // Filter
+            //   Scan_Vertipaq (SE - keep)
+            //   GreaterThan (fold)
+            //     Column ref (fold)
+            //     Constant (fold)
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "GreaterThan: ScaLogOp DependOnCols(0)('Customer'[First Name]) Boolean DominantValue=NONE", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 4, Operation = "'Customer'[First Name]: ScaLogOp DependOnCols(0)('Customer'[First Name]) String DominantValue=NONE", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 5, Operation = "Constant: ScaLogOp DependOnCols()() String DominantValue=Bob", EngineType = EngineType.FormulaEngine }
+            };
+
+            // Set up parent relationships
+            plan.AllNodes[1].Parent = plan.AllNodes[0]; // Scan_Vertipaq -> Filter
+            plan.AllNodes[2].Parent = plan.AllNodes[0]; // GreaterThan -> Filter
+            plan.AllNodes[3].Parent = plan.AllNodes[2]; // Column -> GreaterThan
+            plan.AllNodes[4].Parent = plan.AllNodes[2]; // Constant -> GreaterThan
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate, "Filter should have predicate expression");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("[First Name]"), "Predicate should contain column name");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains(">"), "Predicate should contain comparison operator");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("Bob"), "Predicate should contain constant value");
+
+            // Only Scan_Vertipaq should remain as child (SE node preserved)
+            Assert.AreEqual(1, root.Children.Count, "Only Scan_Vertipaq should remain as child");
+            Assert.IsTrue(root.Children[0].Operation.Contains("Scan_Vertipaq"), "Child should be Scan_Vertipaq");
+        }
+
+        [TestMethod]
+        public void BuildTree_FilterVertipaqWithCondensedPredicate_RollsUpPredicate()
+        {
+            // Arrange - Filter_Vertipaq with already-condensed predicate
+            // Filter_Vertipaq
+            //   Scan_Vertipaq (keep)
+            //   'Product'[Color] <> Black (fold, extract predicate)
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "'Product'[Color] <> Black: ScaLogOp DependOnCols(1)('Product'[Color]) Boolean DominantValue=false", EngineType = EngineType.StorageEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0]; // Scan_Vertipaq -> Filter_Vertipaq
+            plan.AllNodes[2].Parent = plan.AllNodes[0]; // Condensed predicate -> Filter_Vertipaq
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate, "Filter should have predicate expression");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("[Color]"), "Predicate should contain column name");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("<>"), "Predicate should contain not-equal operator");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("Black"), "Predicate should contain value");
+
+            // Scan_Vertipaq should remain
+            Assert.AreEqual(1, root.Children.Count, "Only Scan_Vertipaq should remain");
+        }
+
+        [TestMethod]
+        public void BuildTree_FilterWithSEChild_PreservesSENode()
+        {
+            // Arrange - FE Filter with SE Scan child - should NOT fold Scan
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "GreaterThan: ScaLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 4, Operation = "Constant: ScaLogOp DominantValue=100", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 5, Operation = "'Sales'[Amount]: ScaLogOp", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0];
+            plan.AllNodes[3].Parent = plan.AllNodes[2];
+            plan.AllNodes[4].Parent = plan.AllNodes[2];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - SE Scan node must be preserved (engine transition)
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.Children.Count, "SE Scan should be preserved as child");
+            Assert.AreEqual(EngineType.StorageEngine, root.Children[0].Node.EngineType, "Child should be SE");
+        }
+
+        [TestMethod]
+        public void BuildTree_FilterWithoutPredicate_NoPredicateExpression()
+        {
+            // Arrange - Filter with no comparison children
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp", EngineType = EngineType.StorageEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsFalse(root.HasFilterPredicate, "Filter without comparison should have no predicate expression");
+        }
+
+        [TestMethod]
+        public void IsFilterOperator_Filter_ReturnsTrue()
+        {
+            Assert.IsTrue(PlanNodeViewModel.IsFilterOperator("Filter"));
+        }
+
+        [TestMethod]
+        public void IsFilterOperator_FilterVertipaq_ReturnsTrue()
+        {
+            Assert.IsTrue(PlanNodeViewModel.IsFilterOperator("Filter_Vertipaq"));
+        }
+
+        [TestMethod]
+        public void IsFilterOperator_DataPostFilter_ReturnsTrue()
+        {
+            Assert.IsTrue(PlanNodeViewModel.IsFilterOperator("DataPostFilter"));
+        }
+
+        [TestMethod]
+        public void IsFilterOperator_ScanVertipaq_ReturnsFalse()
+        {
+            Assert.IsFalse(PlanNodeViewModel.IsFilterOperator("Scan_Vertipaq"));
+        }
+
+        [TestMethod]
+        public void DisplayText_FilterWithPredicate_ShowsPredicateInTitle()
+        {
+            // Arrange
+            var node = new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp" };
+            var vm = new PlanNodeViewModel(node)
+            {
+                FilterPredicateExpression = "[Name] > \"Bob\""
+            };
+
+            // Act
+            var displayText = vm.DisplayText;
+
+            // Assert
+            Assert.IsTrue(displayText.Contains("Filter"), "Display should contain Filter");
+            Assert.IsTrue(displayText.Contains("[Name]") || displayText.Contains("..."),
+                "Display should contain predicate or be truncated");
+        }
+
+        [TestMethod]
+        public void BuildTree_LessThanComparison_ExtractsCorrectSymbol()
+        {
+            // Arrange
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "LessThan: ScaLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 4, Operation = "'Sales'[Qty]: ScaLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 5, Operation = "Constant: ScaLogOp DominantValue=10", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0];
+            plan.AllNodes[3].Parent = plan.AllNodes[2];
+            plan.AllNodes[4].Parent = plan.AllNodes[2];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate);
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("<"), "Should contain less-than symbol");
+            Assert.IsFalse(root.FilterPredicateExpression.Contains("<>"), "Should not be not-equal");
+        }
+
+        [TestMethod]
+        public void BuildTree_NotEqualComparison_ExtractsCorrectSymbol()
+        {
+            // Arrange
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "NotEqual: ScaLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 4, Operation = "'Product'[Status]: ScaLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 5, Operation = "Constant: ScaLogOp DominantValue=Inactive", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0];
+            plan.AllNodes[3].Parent = plan.AllNodes[2];
+            plan.AllNodes[4].Parent = plan.AllNodes[2];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate);
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("<>"), "Should contain not-equal symbol");
+        }
+
+        #endregion
+
+        #region Physical Plan Filter Predicate Tests
+
+        [TestMethod]
+        public void BuildTree_PhysicalPlanFilter_WithLogOpGreaterThan_ExtractsColumn()
+        {
+            // Arrange - Physical Plan style Filter with LogOp embedded in child
+            // Filter
+            //   Extend_Lookup with LogOp=GreaterThan
+            //     Constant with DominantValue
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: IterPhyOp LogOp=Filter IterCols(0)('Customer'[First Name])", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Extend_Lookup: IterPhyOp LogOp=GreaterThan IterCols(0)('Customer'[First Name])", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "Constant: ScaPhyOp LogOp=Constant String DominantValue=Bob", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0]; // Extend_Lookup -> Filter
+            plan.AllNodes[2].Parent = plan.AllNodes[1]; // Constant -> Extend_Lookup
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate, "Physical plan Filter should have predicate");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("[First Name]"), "Should extract column from IterCols");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains(">"), "Should have greater-than symbol");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("Bob"), "Should extract constant value");
+        }
+
+        [TestMethod]
+        public void BuildTree_PhysicalPlanFilter_IterColsPattern_ExtractsColumnName()
+        {
+            // Arrange - Test the IterCols regex pattern specifically
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: IterPhyOp LogOp=Filter IterCols(0)('Sales'[Amount])", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Compare: IterPhyOp LogOp=LessThan IterCols(0)('Sales'[Amount])", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "Constant: ScaPhyOp DominantValue=1000", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            if (root.HasFilterPredicate)
+            {
+                Assert.IsTrue(root.FilterPredicateExpression.Contains("[Amount]"), "Should extract Amount from IterCols pattern");
+            }
+        }
+
+        [TestMethod]
+        public void BuildTree_PhysicalPlanFilter_FallbackColumnPattern_ExtractsColumn()
+        {
+            // Arrange - Test fallback pattern when IterCols isn't present
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: IterPhyOp LogOp=Filter", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Lookup: IterPhyOp LogOp=Equal 'Product'[Category]", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "Constant: ScaPhyOp DominantValue=Electronics", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            if (root.HasFilterPredicate)
+            {
+                Assert.IsTrue(root.FilterPredicateExpression.Contains("[Category]"), "Should extract column via fallback pattern");
+            }
+        }
+
+        [TestMethod]
+        public void BuildTree_PhysicalPlanFilter_NumericConstant_NoQuotes()
+        {
+            // Arrange - Numeric constants should not be quoted
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: IterPhyOp LogOp=Filter IterCols(0)('Sales'[Quantity])", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Compare: IterPhyOp LogOp=GreaterOrEqualTo IterCols(0)('Sales'[Quantity])", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "Constant: ScaPhyOp DominantValue=100", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            if (root.HasFilterPredicate)
+            {
+                Assert.IsFalse(root.FilterPredicateExpression.Contains("\"100\""), "Numeric values should not be quoted");
+                Assert.IsTrue(root.FilterPredicateExpression.Contains("100"), "Should contain numeric value");
+            }
+        }
+
+        [TestMethod]
+        public void BuildTree_CondensedPredicate_ExtractsCorrectly()
+        {
+            // Arrange - Test condensed predicate like 'Product'[Color] <> Black
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter_Vertipaq: RelLogOp DependOnCols()() RequiredCols(1)('Product'[Color])", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "'Product'[Color] <> Black: ScaLogOp DependOnCols(1)('Product'[Color]) Boolean", EngineType = EngineType.StorageEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate, "Should detect condensed predicate");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("[Color]"), "Should extract column name");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("<>"), "Should extract operator");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("Black"), "Should extract value");
+        }
+
+        [TestMethod]
+        public void BuildTree_CondensedPredicate_GreaterThanOrEqual()
+        {
+            // Arrange - Test condensed predicate with >= operator
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "'Order'[Total] >= 500: ScaLogOp Boolean", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate, "Should detect >= condensed predicate");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("[Total]"), "Should extract column");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains(">="), "Should preserve >= operator");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("500"), "Should extract numeric value");
+        }
+
+        [TestMethod]
+        public void BuildTree_CondensedPredicate_LessThanOrEqual()
+        {
+            // Arrange - Test condensed predicate with <= operator
+            var plan = new EnrichedQueryPlan();
+            plan.AllNodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Filter: RelLogOp", EngineType = EngineType.FormulaEngine },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Scan_Vertipaq: RelLogOp", EngineType = EngineType.StorageEngine },
+                new EnrichedPlanNode { NodeId = 3, Operation = "'Date'[Year] <= 2023: ScaLogOp Integer", EngineType = EngineType.FormulaEngine }
+            };
+
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.IsTrue(root.HasFilterPredicate, "Should detect <= condensed predicate");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("[Year]"), "Should extract column");
+            Assert.IsTrue(root.FilterPredicateExpression.Contains("<="), "Should preserve <= operator");
+        }
+
+        #endregion
+
+        #region Identical Node Folding Tests
+
+        [TestMethod]
+        public void BuildTree_IdenticalParentChild_FoldsChild()
+        {
+            // Arrange - Parent and child have identical operation strings
+            // This happens with Proxy nodes in physical plans
+            var identicalOp = "Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2)('Product'[Brand], ''[Sales], ''[Cost])";
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = identicalOp
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = identicalOp // Identical to parent
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - identical child should be folded
+            Assert.IsNotNull(root);
+            Assert.AreEqual(0, root.Children.Count, "Identical child should be folded into parent");
+        }
+
+        [TestMethod]
+        public void BuildTree_IdenticalParentChild_WithGrandchildren_PromotesGrandchildren()
+        {
+            // Arrange - Parent and child identical, grandchild different
+            var identicalOp = "Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1)('Product'[Brand], ''[Sales])";
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = identicalOp
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = identicalOp // Will be folded
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Level = 2,
+                        Operation = "Scan_Vertipaq: RelLogOp RequiredCols(1)('Product'[Brand])" // Different - should be promoted
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[1].Children.Add(plan.AllNodes[2]);
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.Children.Count, "Grandchild should be promoted when parent is folded");
+            Assert.IsTrue(root.Children[0].Operation.Contains("Scan_Vertipaq"), "Scan_Vertipaq should be promoted");
+        }
+
+        [TestMethod]
+        public void BuildTree_DifferentParentChild_DoesNotFold()
+        {
+            // Arrange - Parent and child have different operations
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0)('Product'[Brand])"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "Proxy: IterPhyOp LogOp=ScalarVarProxy IterCols(1)('Sales'[Amount])" // Different!
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - different operations should NOT be folded
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.Children.Count, "Different operations should NOT be folded");
+        }
+
+        [TestMethod]
+        public void BuildTree_IdenticalButMultipleChildren_DoesNotFold()
+        {
+            // Arrange - Parent has multiple children, one identical - should NOT fold
+            var identicalOp = "AddColumns: RelLogOp DependOnCols()()";
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = identicalOp
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = identicalOp // Identical
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Level = 1,
+                        Operation = "Filter: RelLogOp" // Different sibling
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[0].Children.Add(plan.AllNodes[2]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - should NOT fold when there are multiple children
+            Assert.IsNotNull(root);
+            Assert.AreEqual(2, root.Children.Count, "Should NOT fold identical child when there are siblings");
+        }
+
+        #endregion
+
+        #region Spool Folding Tests
+
+        [TestMethod]
+        public void BuildTree_SpoolIterator_WithProjectionSpoolChild_FoldsChild()
+        {
+            // Arrange - Spool_Iterator with ProjectionSpool child should fold
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11"
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - ProjectionSpool should be folded into Spool_Iterator
+            Assert.IsNotNull(root);
+            Assert.AreEqual(0, root.Children.Count, "ProjectionSpool should be folded into Spool_Iterator");
+            Assert.IsTrue(root.HasSpoolTypeInfo, "Parent should have SpoolTypeInfo after folding");
+            Assert.IsTrue(root.SpoolTypeInfo.Contains("Project"), "SpoolTypeInfo should contain 'Project'");
+        }
+
+        [TestMethod]
+        public void BuildTree_SpoolLookup_WithProjectionSpoolChild_FoldsChild()
+        {
+            // Arrange - SpoolLookup with ProjectionSpool child should fold
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "SpoolLookup: LookupPhyOp LogOp=ScalarVarProxy LookupCols(0)('Product'[Brand]) Currency #Records=11"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11"
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - ProjectionSpool should be folded into SpoolLookup
+            Assert.IsNotNull(root);
+            Assert.AreEqual(0, root.Children.Count, "ProjectionSpool should be folded into SpoolLookup");
+            Assert.IsTrue(root.HasSpoolTypeInfo, "Parent should have SpoolTypeInfo after folding");
+            Assert.IsTrue(root.SpoolTypeInfo.Contains("Project"), "SpoolTypeInfo should contain 'Project'");
+        }
+
+        [TestMethod]
+        public void BuildTree_SpoolLookup_WithAggregationSpoolChild_FoldsChild()
+        {
+            // Arrange - SpoolLookup with AggregationSpool child
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Level = 0,
+                        Operation = "SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq LookupCols(0)('Sales'[Amount]) Currency"
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Level = 1,
+                        Operation = "AggregationSpool<Sum>: SpoolPhyOp #Records=100"
+                    }
+                }
+            };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.AreEqual(0, root.Children.Count, "AggregationSpool should be folded into SpoolLookup");
+            Assert.IsTrue(root.HasSpoolTypeInfo, "Parent should have SpoolTypeInfo after folding");
+            Assert.IsTrue(root.SpoolTypeInfo.Contains("Sum"), "SpoolTypeInfo should indicate Sum aggregation");
+        }
+
+        #endregion
+
+        #region Column References Tests
+
+        [TestMethod]
+        public void ColumnReferences_WithTableColumn_ExtractsColumnName()
+        {
+            // Arrange - operation with 'Table'[Column] format
+            var node = CreateNodeWithOperation("Scan_Vertipaq: RequiredCols(0)('Product'[Brand])");
+
+            // Act
+            var refs = node.ColumnReferences;
+
+            // Assert
+            Assert.IsTrue(refs.Contains("Brand"), "Should extract column name from 'Table'[Column] format");
+        }
+
+        [TestMethod]
+        public void ColumnReferences_WithMultipleColumns_ExtractsAll()
+        {
+            // Arrange
+            var node = CreateNodeWithOperation("IterCols(0, 1)('Product'[Brand], 'Sales'[Amount])");
+
+            // Act
+            var refs = node.ColumnReferences;
+
+            // Assert
+            Assert.IsTrue(refs.Contains("Brand"), "Should extract Brand");
+            Assert.IsTrue(refs.Contains("Amount"), "Should extract Amount");
+        }
+
+        [TestMethod]
+        public void ColumnReferences_FiltersOutIterCols()
+        {
+            // Arrange - IterCols should NOT appear as a column reference
+            var node = CreateNodeWithOperation("Spool_Iterator: IterPhyOp [IterCols](0)('Product'[Brand])");
+
+            // Act
+            var refs = node.ColumnReferences;
+
+            // Assert
+            Assert.IsFalse(refs.Contains("IterCols"), "Should filter out IterCols system property");
+            Assert.IsTrue(refs.Contains("Brand"), "Should still extract actual column Brand");
+        }
+
+        [TestMethod]
+        public void ColumnReferences_FiltersOutLookupCols()
+        {
+            // Arrange
+            var node = CreateNodeWithOperation("SpoolLookup: LookupPhyOp [LookupCols](0)('Product'[Brand])");
+
+            // Act
+            var refs = node.ColumnReferences;
+
+            // Assert
+            Assert.IsFalse(refs.Contains("LookupCols"), "Should filter out LookupCols system property");
+        }
+
+        [TestMethod]
+        public void ColumnReferences_FiltersOutRequiredCols()
+        {
+            // Arrange
+            var node = CreateNodeWithOperation("Scan: [RequiredCols](0, 1)('T'[Col])");
+
+            // Act
+            var refs = node.ColumnReferences;
+
+            // Assert
+            Assert.IsFalse(refs.Contains("RequiredCols"), "Should filter out RequiredCols system property");
+        }
+
+        [TestMethod]
+        public void ColumnReferences_FiltersOutAllSystemProperties()
+        {
+            // Arrange - operation with multiple system property names that look like columns
+            var node = CreateNodeWithOperation(
+                "[IterCols] [LookupCols] [RequiredCols] [DependOnCols] [JoinCols] " +
+                "[SemijoinCols] [KeyCols] [ValueCols] [FieldCols] [BlankRow] [MeasureRef] [LogOp] [Table] " +
+                "'Actual'[Column]");
+
+            // Act
+            var refs = node.ColumnReferences;
+
+            // Assert - only actual column should be present
+            Assert.AreEqual("Column", refs, "Should only contain actual column, not system properties");
+        }
+
+        [TestMethod]
+        public void ColumnReferences_EmptyWhenNoColumns()
+        {
+            // Arrange
+            var node = CreateNodeWithOperation("Cache: IterPhyOp #FieldCols=1");
+
+            // Act
+            var refs = node.ColumnReferences;
+
+            // Assert
+            Assert.AreEqual(string.Empty, refs, "Should return empty when no column references");
+        }
+
+        [TestMethod]
+        public void ColumnReferences_LimitsToFiveColumns()
+        {
+            // Arrange - operation with more than 5 columns
+            var node = CreateNodeWithOperation(
+                "'T'[Col1], 'T'[Col2], 'T'[Col3], 'T'[Col4], 'T'[Col5], 'T'[Col6], 'T'[Col7]");
+
+            // Act
+            var refs = node.ColumnReferences;
+            var count = refs.Split(',').Length;
+
+            // Assert
+            Assert.IsTrue(count <= 5, $"Should limit to 5 columns, got {count}");
+        }
+
+        #endregion
+
+        #region Nested Spool Chain Grouping Tests
+
+        [TestMethod]
+        public void BuildTree_NestedSpoolIterators_SameRecords_FoldsIntoOne()
+        {
+            // Arrange - Two Spool_Iterator nodes in a chain with same #Records
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Operation = "Cache: IterPhyOp #FieldCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    }
+                }
+            };
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Should fold node 2 into node 1
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.NodeId);
+            Assert.AreEqual(2, root.NestedSpoolDepth, "Should have depth 2 for two folded Spool_Iterators");
+            Assert.IsTrue(root.IsNestedSpoolChain, "Should be marked as nested chain");
+            Assert.IsTrue(root.DisplayName.Contains("×2"), "DisplayName should show depth ×2");
+
+            // The child should be the Cache, not the second Spool_Iterator
+            Assert.AreEqual(1, root.Children.Count, "Should have 1 child (Cache)");
+            Assert.AreEqual("Cache", root.Children[0].OperatorName);
+        }
+
+        [TestMethod]
+        public void BuildTree_NestedSpoolIterators_DifferentRecords_DoesNotFold()
+        {
+            // Arrange - Two Spool_Iterator nodes with different #Records
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=0 #ValueCols=3",
+                        Parent = null
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Operation = "Cache: IterPhyOp #FieldCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    }
+                }
+            };
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Should NOT fold (different #Records: 1 vs 11)
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.NodeId);
+            Assert.AreEqual(1, root.NestedSpoolDepth, "Should have depth 1 (no nesting)");
+            Assert.IsFalse(root.IsNestedSpoolChain, "Should NOT be marked as nested chain");
+            Assert.IsFalse(root.DisplayName.Contains("×"), "DisplayName should NOT show depth multiplier");
+
+            // Should have the second Spool_Iterator as child
+            Assert.AreEqual(1, root.Children.Count);
+            Assert.AreEqual(2, root.Children[0].NodeId, "Child should be node 2 (second Spool_Iterator)");
+        }
+
+        [TestMethod]
+        public void BuildTree_ThreeNestedSpoolIterators_SameRecords_FoldsAllIntoOne()
+        {
+            // Arrange - Three Spool_Iterator nodes in a chain with same #Records
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=GroupBy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 4,
+                        Operation = "Cache: IterPhyOp #FieldCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    }
+                }
+            };
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.AllNodes[3].Parent = plan.AllNodes[2];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Should fold nodes 2 and 3 into node 1
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.NodeId);
+            Assert.AreEqual(3, root.NestedSpoolDepth, "Should have depth 3 for three folded Spool_Iterators");
+            Assert.IsTrue(root.IsNestedSpoolChain, "Should be marked as nested chain");
+            Assert.IsTrue(root.DisplayName.Contains("×3"), "DisplayName should show depth ×3");
+
+            // The child should be the Cache
+            Assert.AreEqual(1, root.Children.Count, "Should have 1 child (Cache)");
+            Assert.AreEqual("Cache", root.Children[0].OperatorName);
+        }
+
+        [TestMethod]
+        public void BuildTree_SpoolIterator_WithMultipleChildren_DoesNotFold()
+        {
+            // Arrange - Spool_Iterator with two children (not a linear chain)
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
+                        Parent = null // Will be set below
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Operation = "SpoolLookup: LookupPhyOp LogOp=ScalarVarProxy LookupCols(0)('Product'[Brand]) #Records=11",
+                        Parent = null // Will be set below
+                    }
+                }
+            };
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[0]; // Both children of root
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Should NOT fold (multiple children)
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.NodeId);
+            Assert.AreEqual(1, root.NestedSpoolDepth, "Should have depth 1 (no nesting)");
+            Assert.IsFalse(root.IsNestedSpoolChain, "Should NOT be marked as nested chain");
+
+            // Should have both children
+            Assert.AreEqual(2, root.Children.Count, "Should have 2 children");
         }
 
         #endregion
