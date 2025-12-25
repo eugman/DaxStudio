@@ -1,0 +1,52 @@
+Line	Logical Query Plan
+1	__DS0Core: Union: RelLogOp VarName=__DS0Core DependOnCols()() 0-6 RequiredCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[])
+2	    GroupSemiJoin: RelLogOp DependOnCols()() 0-5 RequiredCols(0, 1, 2, 3, 4, 5)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity])
+3	        Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Product'[Brand])
+4	        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=false
+5	        ScalarVarProxy: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+6	        Divide: ScaLogOp MeasureRef=[Margin %] DependOnCols(0)('Product'[Brand]) Double DominantValue=BLANK
+7	            Subtract: ScaLogOp MeasureRef=[Margin] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+8	                Sum_Vertipaq: ScaLogOp RefCount=2 MeasureRef=[Sales Amount] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+9	                    Scan_Vertipaq: RelLogOp DependOnCols(0)('Product'[Brand]) 1-71 RequiredCols(0, 56, 58)('Product'[Brand], 'Sales'[Quantity], 'Sales'[Net Price])
+10	                    Multiply: ScaLogOp DependOnCols(56, 58)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+11	                        'Sales'[Quantity]: ScaLogOp DependOnCols(56)('Sales'[Quantity]) Integer DominantValue=NONE
+12	                        'Sales'[Net Price]: ScaLogOp DependOnCols(58)('Sales'[Net Price]) Currency DominantValue=NONE
+13	                ScalarVarProxy: ScaLogOp MeasureRef=[Total Cost] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+14	            ScalarVarProxy: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+15	        Sum_Vertipaq: ScaLogOp MeasureRef=[Total Cost] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+16	            Scan_Vertipaq: RelLogOp DependOnCols(0)('Product'[Brand]) 1-71 RequiredCols(0, 56, 59)('Product'[Brand], 'Sales'[Quantity], 'Sales'[Unit Cost])
+17	            Multiply: ScaLogOp DependOnCols(56, 59)('Sales'[Quantity], 'Sales'[Unit Cost]) Currency DominantValue=NONE
+18	                'Sales'[Quantity]: ScaLogOp DependOnCols(56)('Sales'[Quantity]) Integer DominantValue=NONE
+19	                'Sales'[Unit Cost]: ScaLogOp DependOnCols(59)('Sales'[Unit Cost]) Currency DominantValue=NONE
+20	        Sum_Vertipaq: ScaLogOp MeasureRef=[Total Quantity] DependOnCols(0)('Product'[Brand]) Integer DominantValue=BLANK
+21	            Scan_Vertipaq: RelLogOp DependOnCols(0)('Product'[Brand]) 1-71 RequiredCols(0, 56)('Product'[Brand], 'Sales'[Quantity])
+22	            'Sales'[Quantity]: ScaLogOp DependOnCols(56)('Sales'[Quantity]) Integer DominantValue=NONE
+23	    GroupSemiJoin: RelLogOp DependOnCols()() 0-5 RequiredCols(0, 1, 2, 3, 4, 5)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity])
+24	        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=true
+25	        ScalarVarProxy: ScaLogOp MeasureRef=[Sales Amount] DependOnCols()() Currency DominantValue=BLANK
+26	        Divide: ScaLogOp MeasureRef=[Margin %] DependOnCols()() Double DominantValue=BLANK
+27	            Subtract: ScaLogOp MeasureRef=[Margin] DependOnCols()() Currency DominantValue=BLANK
+28	                Sum_Vertipaq: ScaLogOp RefCount=2 MeasureRef=[Sales Amount] DependOnCols()() Currency DominantValue=BLANK
+29	                    Scan_Vertipaq: RelLogOp DependOnCols()() 0-70 RequiredCols(55, 57)('Sales'[Quantity], 'Sales'[Net Price])
+30	                    Multiply: ScaLogOp DependOnCols(55, 57)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+31	                        'Sales'[Quantity]: ScaLogOp DependOnCols(55)('Sales'[Quantity]) Integer DominantValue=NONE
+32	                        'Sales'[Net Price]: ScaLogOp DependOnCols(57)('Sales'[Net Price]) Currency DominantValue=NONE
+33	                ScalarVarProxy: ScaLogOp MeasureRef=[Total Cost] DependOnCols()() Currency DominantValue=BLANK
+34	            ScalarVarProxy: ScaLogOp MeasureRef=[Sales Amount] DependOnCols()() Currency DominantValue=BLANK
+35	        Sum_Vertipaq: ScaLogOp MeasureRef=[Total Cost] DependOnCols()() Currency DominantValue=BLANK
+36	            Scan_Vertipaq: RelLogOp DependOnCols()() 0-70 RequiredCols(55, 58)('Sales'[Quantity], 'Sales'[Unit Cost])
+37	            Multiply: ScaLogOp DependOnCols(55, 58)('Sales'[Quantity], 'Sales'[Unit Cost]) Currency DominantValue=NONE
+38	                'Sales'[Quantity]: ScaLogOp DependOnCols(55)('Sales'[Quantity]) Integer DominantValue=NONE
+39	                'Sales'[Unit Cost]: ScaLogOp DependOnCols(58)('Sales'[Unit Cost]) Currency DominantValue=NONE
+40	        Sum_Vertipaq: ScaLogOp MeasureRef=[Total Quantity] DependOnCols()() Integer DominantValue=BLANK
+41	            Scan_Vertipaq: RelLogOp DependOnCols()() 0-70 RequiredCols(55)('Sales'[Quantity])
+42	            'Sales'[Quantity]: ScaLogOp DependOnCols(55)('Sales'[Quantity]) Integer DominantValue=NONE
+43	__DS0PrimaryWindowed: TopN: RelLogOp VarName=__DS0PrimaryWindowed DependOnCols()() 0-6 RequiredCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[])
+44	    TableVarProxy: RelLogOp DependOnCols()() 0-6 RequiredCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[]) RefVarName=__DS0Core
+45	    Constant: ScaLogOp DependOnCols()() Integer DominantValue=502
+46	    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE
+47	    ColPosition<'Product'[Brand]>: ScaLogOp DependOnCols(0)('Product'[Brand]) String DominantValue=NONE
+48	Order: RelLogOp DependOnCols()() 0-6 RequiredCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[])
+49	    TableVarProxy: RelLogOp DependOnCols()() 0-6 RequiredCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[]) RefVarName=__DS0PrimaryWindowed
+50	    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE
+51	    ColPosition<'Product'[Brand]>: ScaLogOp DependOnCols(0)('Product'[Brand]) String DominantValue=NONE

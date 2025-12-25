@@ -1,0 +1,74 @@
+Line	Records	Physical Query Plan
+1		PartitionIntoGroups: IterPhyOp LogOp=Order IterCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[]) #Groups=1 #Rows=12
+2	1	    AggregationSpool<Order>: SpoolPhyOp #Records=1
+3		        Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[])
+4		            Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[])
+5		                Union: IterPhyOp LogOp=Union IterCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[])
+6	11	                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2, 3, 4, 5)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity]) #Records=11 #KeyCols=1 #ValueCols=4
+7	11	                        AggregationSpool<GroupSemiJoin>: SpoolPhyOp #Records=11
+8	11	                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+9	11	                                ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+10		                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+11		                            Extend_Lookup: IterPhyOp LogOp=Divide IterCols(0)('Product'[Brand])
+12		                                OuterHashJoin: IterPhyOp LogOp=Subtract IterCols(0)('Product'[Brand])
+13		                                    Extend_Lookup: IterPhyOp LogOp=Subtract IterCols(0)('Product'[Brand])
+14	11	                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+15	11	                                            ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+16		                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+17	11	                                        SpoolLookup: LookupPhyOp LogOp=ScalarVarProxy LookupCols(0)('Product'[Brand]) Currency #Records=11 #KeyCols=76 #ValueCols=3 DominantValue=BLANK
+18	11	                                            ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+19		                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+20	11	                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+21	11	                                        ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+22		                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+23	11	                                SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq LookupCols(0)('Product'[Brand]) Currency #Records=11 #KeyCols=76 #ValueCols=3 DominantValue=BLANK
+24	11	                                    ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+25		                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+26	11	                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+27	11	                                ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+28		                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+29	11	                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+30	11	                                ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+31		                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+32	1	                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2, 3, 4, 5)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity]) #Records=1 #KeyCols=0 #ValueCols=4
+33	1	                        AggregationSpool<GroupSemiJoin>: SpoolPhyOp #Records=1
+34	1	                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy #Records=1 #KeyCols=0 #ValueCols=3
+35	1	                                AggregationSpool<AggFusion<Sum, Sum, Sum>>: SpoolPhyOp #Records=1
+36	11	                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+37	11	                                        ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+38		                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+39		                            Extend_Lookup: IterPhyOp LogOp=Divide
+40		                                OuterHashJoin: IterPhyOp LogOp=Subtract
+41		                                    Extend_Lookup: IterPhyOp LogOp=Subtract
+42	1	                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=0 #ValueCols=3
+43	1	                                            AggregationSpool<AggFusion<Sum, Sum, Sum>>: SpoolPhyOp #Records=1
+44	11	                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+45	11	                                                    ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+46		                                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+47	1	                                        SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq Currency #Records=1 #KeyCols=0 #ValueCols=3 DominantValue=BLANK
+48	1	                                            AggregationSpool<AggFusion<Sum, Sum, Sum>>: SpoolPhyOp #Records=1
+49	11	                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+50	11	                                                    ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+51		                                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+52	1	                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy #Records=1 #KeyCols=0 #ValueCols=3
+53	1	                                        AggregationSpool<AggFusion<Sum, Sum, Sum>>: SpoolPhyOp #Records=1
+54	11	                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+55	11	                                                ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+56		                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+57	1	                                SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq Currency #Records=1 #KeyCols=0 #ValueCols=3 DominantValue=BLANK
+58	1	                                    AggregationSpool<AggFusion<Sum, Sum, Sum>>: SpoolPhyOp #Records=1
+59	11	                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+60	11	                                            ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+61		                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+62	1	                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=0 #ValueCols=3
+63	1	                                AggregationSpool<AggFusion<Sum, Sum, Sum>>: SpoolPhyOp #Records=1
+64	11	                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+65	11	                                        ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+66		                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+67	1	                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=0 #ValueCols=3
+68	1	                                AggregationSpool<AggFusion<Sum, Sum, Sum>>: SpoolPhyOp #Records=1
+69	11	                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=76 #ValueCols=3
+70	11	                                        ProjectionSpool<ProjectFusion<Copy, Copy, Copy>>: SpoolPhyOp #Records=11
+71		                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=3
+72		        ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue<''[IsGrandTotalRowTotal]>''[IsGrandTotalRowTotal] LookupCols(1)(''[IsGrandTotalRowTotal]) Boolean
+73		        ColPosition<'Product'[Brand]>: LookupPhyOp LogOp=ColPosition<'Product'[Brand]>ColPosition<'Product'[Brand]> LookupCols(0)('Product'[Brand]) String

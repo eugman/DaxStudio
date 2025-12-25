@@ -1,0 +1,14 @@
+Line	Logical Query Plan
+1	AddColumns: RelLogOp DependOnCols()() 0-0 RequiredCols(0)(''[Filtered Margin])
+2	    Calculate: ScaLogOp MeasureRef=[Filtered Margin] DependOnCols()() Currency DominantValue=BLANK
+3	        Sum_Vertipaq: ScaLogOp MeasureRef=[Internet Total Margin] DependOnCols()() Currency DominantValue=BLANK
+4	            Scan_Vertipaq: RelLogOp DependOnCols()() 2-115 RequiredCols(115)('Internet Sales'[Margin])
+5	            'Internet Sales'[Margin]: ScaLogOp DependOnCols(115)('Internet Sales'[Margin]) Currency DominantValue=NONE
+6	        Filter: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])
+7	            Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Customer'[First Name])
+8	            GreaterThan: ScaLogOp DependOnCols(0)('Customer'[First Name]) Boolean DominantValue=NONE
+9	                'Customer'[First Name]: ScaLogOp DependOnCols(0)('Customer'[First Name]) String DominantValue=NONE
+10	                Constant: ScaLogOp DependOnCols()() String DominantValue=Bob
+11	        Filter_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])
+12	            Scan_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Product'[Color])
+13	            'Product'[Color] <> Black: ScaLogOp DependOnCols(1)('Product'[Color]) Boolean DominantValue=false

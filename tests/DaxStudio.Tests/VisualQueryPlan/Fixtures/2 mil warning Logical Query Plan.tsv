@@ -1,0 +1,50 @@
+Line	Logical Query Plan
+1	__DS0Core: Union: RelLogOp VarName=__DS0Core DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Margin], ''[Median_Quantity], ''[])
+2	    GroupSemiJoin: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Margin], ''[Median_Quantity])
+3	        Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Product'[Brand])
+4	        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=false
+5	        Subtract: ScaLogOp MeasureRef=[Margin] DependOnCols(0)('Product'[Brand]) Variant DominantValue=BLANK
+6	            Variant->Numeric/Date: ScaLogOp DependOnCols(0)('Product'[Brand]) Numeric/Date DominantValue=BLANK
+7	                Sum_Vertipaq: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+8	                    Scan_Vertipaq: RelLogOp DependOnCols(0)('Product'[Brand]) 1-71 RequiredCols(0, 56, 58)('Product'[Brand], 'Sales'[Quantity], 'Sales'[Net Price])
+9	                    Multiply: ScaLogOp DependOnCols(56, 58)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+10	                        'Sales'[Quantity]: ScaLogOp DependOnCols(56)('Sales'[Quantity]) Integer DominantValue=NONE
+11	                        'Sales'[Net Price]: ScaLogOp DependOnCols(58)('Sales'[Net Price]) Currency DominantValue=NONE
+12	            Variant->Numeric/Date: ScaLogOp DependOnCols(0)('Product'[Brand]) Numeric/Date DominantValue=BLANK
+13	                Sum_Vertipaq: ScaLogOp MeasureRef=[Total Cost] DependOnCols(0)('Product'[Brand]) Currency DominantValue=BLANK
+14	                    Scan_Vertipaq: RelLogOp DependOnCols(0)('Product'[Brand]) 1-71 RequiredCols(0, 56, 59)('Product'[Brand], 'Sales'[Quantity], 'Sales'[Unit Cost])
+15	                    Multiply: ScaLogOp DependOnCols(56, 59)('Sales'[Quantity], 'Sales'[Unit Cost]) Currency DominantValue=NONE
+16	                        'Sales'[Quantity]: ScaLogOp DependOnCols(56)('Sales'[Quantity]) Integer DominantValue=NONE
+17	                        'Sales'[Unit Cost]: ScaLogOp DependOnCols(59)('Sales'[Unit Cost]) Currency DominantValue=NONE
+18	        Median: ScaLogOp MeasureRef=[Median Quantity] DependOnCols(0)('Product'[Brand]) Numeric DominantValue=BLANK
+19	            Scan_Vertipaq: RelLogOp DependOnCols(0)('Product'[Brand]) 1-71 RequiredCols(0, 48, 56)('Product'[Brand], 'Sales'[RowNumber-2662979B-1795-4F74-8F37-6A1BA8059B61], 'Sales'[Quantity])
+20	            'Sales'[Quantity]: ScaLogOp DependOnCols(56)('Sales'[Quantity]) Integer DominantValue=NONE
+21	            Constant: ScaLogOp DependOnCols()() Double DominantValue=0.5
+22	    GroupSemiJoin: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Margin], ''[Median_Quantity])
+23	        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=true
+24	        Subtract: ScaLogOp MeasureRef=[Margin] DependOnCols()() Variant DominantValue=BLANK
+25	            Variant->Numeric/Date: ScaLogOp DependOnCols()() Numeric/Date DominantValue=BLANK
+26	                Sum_Vertipaq: ScaLogOp MeasureRef=[Sales Amount] DependOnCols()() Currency DominantValue=BLANK
+27	                    Scan_Vertipaq: RelLogOp DependOnCols()() 0-70 RequiredCols(55, 57)('Sales'[Quantity], 'Sales'[Net Price])
+28	                    Multiply: ScaLogOp DependOnCols(55, 57)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+29	                        'Sales'[Quantity]: ScaLogOp DependOnCols(55)('Sales'[Quantity]) Integer DominantValue=NONE
+30	                        'Sales'[Net Price]: ScaLogOp DependOnCols(57)('Sales'[Net Price]) Currency DominantValue=NONE
+31	            Variant->Numeric/Date: ScaLogOp DependOnCols()() Numeric/Date DominantValue=BLANK
+32	                Sum_Vertipaq: ScaLogOp MeasureRef=[Total Cost] DependOnCols()() Currency DominantValue=BLANK
+33	                    Scan_Vertipaq: RelLogOp DependOnCols()() 0-70 RequiredCols(55, 58)('Sales'[Quantity], 'Sales'[Unit Cost])
+34	                    Multiply: ScaLogOp DependOnCols(55, 58)('Sales'[Quantity], 'Sales'[Unit Cost]) Currency DominantValue=NONE
+35	                        'Sales'[Quantity]: ScaLogOp DependOnCols(55)('Sales'[Quantity]) Integer DominantValue=NONE
+36	                        'Sales'[Unit Cost]: ScaLogOp DependOnCols(58)('Sales'[Unit Cost]) Currency DominantValue=NONE
+37	        Median: ScaLogOp MeasureRef=[Median Quantity] DependOnCols()() Numeric DominantValue=BLANK
+38	            Scan_Vertipaq: RelLogOp DependOnCols()() 0-70 RequiredCols(47, 55)('Sales'[RowNumber-2662979B-1795-4F74-8F37-6A1BA8059B61], 'Sales'[Quantity])
+39	            'Sales'[Quantity]: ScaLogOp DependOnCols(55)('Sales'[Quantity]) Integer DominantValue=NONE
+40	            Constant: ScaLogOp DependOnCols()() Double DominantValue=0.5
+41	__DS0PrimaryWindowed: TopN: RelLogOp VarName=__DS0PrimaryWindowed DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Margin], ''[Median_Quantity], ''[])
+42	    TableVarProxy: RelLogOp DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Margin], ''[Median_Quantity], ''[]) RefVarName=__DS0Core
+43	    Constant: ScaLogOp DependOnCols()() Integer DominantValue=502
+44	    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE
+45	    ColPosition<'Product'[Brand]>: ScaLogOp DependOnCols(0)('Product'[Brand]) String DominantValue=NONE
+46	Order: RelLogOp DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Margin], ''[Median_Quantity], ''[])
+47	    TableVarProxy: RelLogOp DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Margin], ''[Median_Quantity], ''[]) RefVarName=__DS0PrimaryWindowed
+48	    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE
+49	    ColPosition<'Product'[Brand]>: ScaLogOp DependOnCols(0)('Product'[Brand]) String DominantValue=NONE
