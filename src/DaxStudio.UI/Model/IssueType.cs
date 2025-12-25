@@ -15,11 +15,36 @@ namespace DaxStudio.UI.Model
         /// CallbackDataID operation indicating row-by-row processing
         /// that can significantly impact performance.
         /// </summary>
-        CallbackDataID
+        CallbackDataID,
 
-        // Future expansions:
-        // HighCardinality,
-        // UnnecessaryScan,
-        // FilterPushdownFailure
+        /// <summary>
+        /// High Formula Engine ratio - FE time exceeds threshold of total.
+        /// Indicates single-threaded FE work dominating query time.
+        /// </summary>
+        HighFormulaEngineRatio,
+
+        /// <summary>
+        /// CrossApply operation with high row counts indicating
+        /// expensive row-by-row iteration (nested loop/cartesian).
+        /// </summary>
+        ExcessiveCrossApply,
+
+        /// <summary>
+        /// xmSQL callback detected in Storage Engine query.
+        /// Indicates SE calling back to FE during scan.
+        /// </summary>
+        XmSqlCallback,
+
+        /// <summary>
+        /// High number of Storage Engine queries without cache hits.
+        /// May indicate inefficient query pattern.
+        /// </summary>
+        LowCacheHitRatio,
+
+        /// <summary>
+        /// Large table scan followed by filter, suggesting
+        /// filter could not be pushed down to scan.
+        /// </summary>
+        InefficientFilter
     }
 }

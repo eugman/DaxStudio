@@ -47,5 +47,47 @@ namespace DaxStudio.UI.Services
         /// Whether to flag CallbackDataID operations.
         /// </summary>
         public bool DetectCallbackDataId { get; set; } = true;
+
+        /// <summary>
+        /// Formula Engine ratio threshold (0-1). If FE time > this ratio of total, issue warning.
+        /// Default is 0.5 (50%).
+        /// </summary>
+        public double HighFormulaEngineRatioThreshold { get; set; } = 0.5;
+
+        /// <summary>
+        /// Whether to detect high Formula Engine ratio issues.
+        /// </summary>
+        public bool DetectHighFormulaEngineRatio { get; set; } = true;
+
+        /// <summary>
+        /// Row count threshold for CrossApply warnings.
+        /// </summary>
+        public long ExcessiveCrossApplyThreshold { get; set; } = 50_000;
+
+        /// <summary>
+        /// Whether to detect excessive CrossApply issues.
+        /// </summary>
+        public bool DetectExcessiveCrossApply { get; set; } = true;
+
+        /// <summary>
+        /// Whether to detect xmSQL callbacks in SE queries.
+        /// </summary>
+        public bool DetectXmSqlCallbacks { get; set; } = true;
+
+        /// <summary>
+        /// Minimum SE queries to check cache ratio (avoid false positives on small queries).
+        /// </summary>
+        public int MinSeQueriesForCacheCheck { get; set; } = 3;
+
+        /// <summary>
+        /// Cache hit ratio threshold (0-1). Below this triggers warning.
+        /// Default is 0.2 (20% cache hits expected).
+        /// </summary>
+        public double LowCacheHitRatioThreshold { get; set; } = 0.2;
+
+        /// <summary>
+        /// Whether to detect low cache hit ratio issues.
+        /// </summary>
+        public bool DetectLowCacheHitRatio { get; set; } = true;
     }
 }

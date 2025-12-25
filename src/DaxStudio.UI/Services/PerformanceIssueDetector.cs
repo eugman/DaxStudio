@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using DaxStudio.UI.Model;
 using Serilog;
@@ -26,6 +27,16 @@ namespace DaxStudio.UI.Services
             @"CallbackDataID",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        // Pattern to detect CrossApply operations with row counts
+        private static readonly Regex CrossApplyPattern = new Regex(
+            @"CrossApply.*#Records=(\d+)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // Pattern to detect records in operation string
+        private static readonly Regex RecordsPattern = new Regex(
+            @"#Records=(\d+)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         /// <summary>
         /// Gets detection thresholds and settings.
         /// </summary>
@@ -43,6 +54,11 @@ namespace DaxStudio.UI.Services
 
             var issues = new List<PerformanceIssue>();
 
+            // Plan-level checks
+            DetectHighFormulaEngineRatio(plan, issues);
+            DetectLowCacheHitRatio(plan, issues);
+
+            // Node-level checks
             foreach (var node in plan.AllNodes)
             {
                 var nodeIssues = DetectNodeIssues(node);
@@ -72,6 +88,18 @@ namespace DaxStudio.UI.Services
             if (Settings.DetectCallbackDataId)
             {
                 DetectCallbackDataId(node, issues);
+            }
+
+            // Check for excessive CrossApply
+            if (Settings.DetectExcessiveCrossApply)
+            {
+                DetectExcessiveCrossApply(node, issues);
+            }
+
+            // Check for xmSQL callbacks
+            if (Settings.DetectXmSqlCallbacks && !string.IsNullOrEmpty(node.XmSql))
+            {
+                DetectXmSqlCallbacks(node, issues);
             }
 
             return issues;
@@ -143,6 +171,143 @@ namespace DaxStudio.UI.Services
                     Remediation = "CallbackDataID indicates row-by-row processing between Storage Engine and Formula Engine. " +
                                   "This often occurs with complex calculated columns or measures that cannot be pushed to the storage engine. " +
                                   "Consider simplifying the calculation or pre-computing values."
+                });
+            }
+        }
+
+        private void DetectExcessiveCrossApply(EnrichedPlanNode node, List<PerformanceIssue> issues)
+        {
+            // Check if this is a CrossApply operation
+            if (!node.Operation.StartsWith("CrossApply", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            long? rowCount = null;
+
+            // Get row count from node or operation string
+            if (node.Records.HasValue)
+            {
+                rowCount = node.Records.Value;
+            }
+            else
+            {
+                var match = RecordsPattern.Match(node.Operation);
+                if (match.Success && long.TryParse(match.Groups[1].Value, out var records))
+                {
+                    rowCount = records;
+                }
+            }
+
+            if (!rowCount.HasValue)
+                return;
+
+            if (rowCount.Value >= Settings.ExcessiveCrossApplyThreshold)
+            {
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.ExcessiveCrossApply,
+                    Severity = IssueSeverity.Warning,
+                    AffectedNodeId = node.NodeId,
+                    Description = $"CrossApply operation processed {rowCount.Value:N0} rows",
+                    Remediation = "CrossApply performs row-by-row processing (nested loop). " +
+                                  "Consider restructuring the query to use set-based operations. " +
+                                  "Review CALCULATE context transitions and iterator functions (SUMX, FILTER, etc.).",
+                    MetricValue = rowCount.Value,
+                    Threshold = Settings.ExcessiveCrossApplyThreshold
+                });
+            }
+        }
+
+        private void DetectXmSqlCallbacks(EnrichedPlanNode node, List<PerformanceIssue> issues)
+        {
+            var callbackType = XmSqlParser.DetectCallbackType(node.XmSql);
+
+            if (callbackType == XmSqlCallbackType.CallbackDataID)
+            {
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.XmSqlCallback,
+                    Severity = IssueSeverity.Warning,
+                    AffectedNodeId = node.NodeId,
+                    Description = "xmSQL contains CallbackDataID - results NOT cached",
+                    Remediation = XmSqlParser.GetCallbackDescription(callbackType)
+                });
+            }
+            else if (callbackType != XmSqlCallbackType.None)
+            {
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.XmSqlCallback,
+                    Severity = IssueSeverity.Info,
+                    AffectedNodeId = node.NodeId,
+                    Description = $"xmSQL contains {callbackType} callback",
+                    Remediation = XmSqlParser.GetCallbackDescription(callbackType)
+                });
+            }
+        }
+
+        private void DetectHighFormulaEngineRatio(EnrichedQueryPlan plan, List<PerformanceIssue> issues)
+        {
+            if (!Settings.DetectHighFormulaEngineRatio)
+                return;
+
+            // Need timing data
+            if (plan.TotalDurationMs == 0)
+                return;
+
+            // Calculate FE time (Total - SE)
+            var totalMs = plan.TotalDurationMs;
+            var seMs = plan.StorageEngineDurationMs;
+            var feMs = totalMs - seMs;
+
+            if (feMs <= 0)
+                return;
+
+            var feRatio = (double)feMs / totalMs;
+
+            if (feRatio >= Settings.HighFormulaEngineRatioThreshold)
+            {
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.HighFormulaEngineRatio,
+                    Severity = IssueSeverity.Warning,
+                    AffectedNodeId = plan.RootNode?.NodeId ?? 0,
+                    Description = $"Formula Engine used {feRatio:P0} of query time ({feMs:N0}ms of {totalMs:N0}ms)",
+                    Remediation = "Formula Engine is single-threaded. High FE ratio indicates complex DAX calculations. " +
+                                  "Consider simplifying measures, pre-calculating values in the model, or reducing iterator usage.",
+                    MetricValue = feMs,
+                    Threshold = (long)(totalMs * Settings.HighFormulaEngineRatioThreshold)
+                });
+            }
+        }
+
+        private void DetectLowCacheHitRatio(EnrichedQueryPlan plan, List<PerformanceIssue> issues)
+        {
+            if (!Settings.DetectLowCacheHitRatio)
+                return;
+
+            // Count SE queries and cache hits
+            var seQueries = plan.StorageEngineQueryCount;
+            var cacheHits = plan.CacheHits;
+
+            // Need minimum number of queries to check
+            if (seQueries < Settings.MinSeQueriesForCacheCheck)
+                return;
+
+            var cacheRatio = (double)cacheHits / seQueries;
+
+            // Only flag if we have many queries with low cache hits
+            if (cacheRatio < Settings.LowCacheHitRatioThreshold && seQueries > 5)
+            {
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.LowCacheHitRatio,
+                    Severity = IssueSeverity.Info,
+                    AffectedNodeId = plan.RootNode?.NodeId ?? 0,
+                    Description = $"Low cache hit ratio: {cacheHits} hits out of {seQueries} SE queries ({cacheRatio:P0})",
+                    Remediation = "Low cache hit ratio may indicate the query pattern isn't benefiting from SE caching. " +
+                                  "This can be normal for first-time queries or complex filter combinations.",
+                    MetricValue = cacheHits,
+                    Threshold = (long)(seQueries * Settings.LowCacheHitRatioThreshold)
                 });
             }
         }

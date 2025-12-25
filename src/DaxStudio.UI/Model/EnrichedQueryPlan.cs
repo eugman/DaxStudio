@@ -70,6 +70,11 @@ namespace DaxStudio.UI.Model
         public int CacheHits { get; set; }
 
         /// <summary>
+        /// Number of Storage Engine queries executed.
+        /// </summary>
+        public int StorageEngineQueryCount { get; set; }
+
+        /// <summary>
         /// Root node of the plan tree.
         /// </summary>
         public EnrichedPlanNode RootNode { get; set; }
