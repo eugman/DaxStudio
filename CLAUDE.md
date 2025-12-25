@@ -30,8 +30,9 @@ C# (.NET Framework 4.7.2+, matching DaxStudio target): Follow standard conventio
 ## Documentation
 
 Documentation for new features is in the `docs/` folder:
-- `docs/VISUAL_QUERY_PLAN_PATTERNS.md` - Query plan parsing patterns and operation string formats
-- `docs/VISUAL_QUERY_PLAN_SOURCES.md` - Source attribution for research consulted
+- `docs/VISUAL_QUERY_PLAN_REFERENCE.md` - Comprehensive reference for operators, properties, and terminology
+- `docs/VISUAL_QUERY_PLAN_PATTERNS.md` - Regex patterns for parsing operation strings
+- `docs/VISUAL_QUERY_PLAN_SOURCES.md` - Source links with summaries
 
 ## Build & Run
 

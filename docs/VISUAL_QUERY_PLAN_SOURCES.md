@@ -1,69 +1,49 @@
-# Visual Query Plan - Source Attribution
+# Visual Query Plan - Sources
 
-This document lists the sources consulted during the development of the Visual Query Plan feature improvements.
-
-## SQLBI Documentation
-
-### Logical Query Plan
-- **URL**: https://docs.sqlbi.com/dax-internals/vertipaq/logical-query-plan
-- **Key concepts**: 11 primary logical operators (GroupBy_Vertipaq, Sum_Vertipaq, Scan_Vertipaq, Filter_Vertipaq, etc.)
-- **Used for**: Understanding operator types and their purposes
-
-### Physical Query Plan
-- **URL**: https://docs.sqlbi.com/dax-internals/vertipaq/physical-query-plan
-- **Key concepts**: Physical operators (Cache, DataPostFilter, CrossApply, SpoolLookup, SpoolIterator, etc.)
-- **Used for**: Understanding execution mechanics and performance implications
-
-### xmSQL Reference
-- **URL**: https://docs.sqlbi.com/dax-internals/vertipaq/xmSQL
-- **Key concepts**: Storage Engine query language, pseudo-SQL syntax
-- **Used for**: Understanding SE query display and interpretation
-
-## PDF Documentation
-
-### DAX Query Plans (SQLBI)
-- **Author**: Alberto Ferrari / SQLBI
-- **Pages**: 29
-- **Key concepts**:
-  - Formula Engine (FE) vs Storage Engine (SE) architecture
-  - FE is single-threaded, SE is multi-threaded
-  - CallbackDataID: SE calling back to FE during table scan (NOT cached - performance red flag)
-  - #Records metric interpretation
-  - Excessive materialization detection (CrossApply generating millions of rows)
-  - Query plan optimization strategies
-
-## Blog Posts
-
-### MDX DAX Blog
-- **URL**: mdxdax.blogspot.com
-- **Topics consulted**:
-  - Graphical query plans for DAX
-  - Query plan visualization techniques
-  - Performance analysis methodologies
-
-## Implementation Guidelines
-
-Based on these sources, the following thresholds and indicators were implemented:
-
-### Row Count Thresholds
-| Rows | Color | Status |
-|------|-------|--------|
-| < 10,000 | Green | Acceptable |
-| < 100,000 | Yellow | Concerning |
-| 1,000,000+ | Red | Excessive materialization |
-
-### Engine Type Indicators
-- **SE (Storage Engine)**: Green badge - Multi-threaded, highly optimized
-- **FE (Formula Engine)**: Purple badge - Single-threaded, handles complex DAX
-
-### Performance Concerns
-- **CallbackDataID**: Orange "CB" badge - SE calling FE, results not cached
-- **Excessive rows**: Red row count - Indicates materialization problems
-- **Cache hits**: Blue "Cache" badge - Query used cached data
-
-## License
-
-Sources are attributed to their respective authors. SQLBI documentation is copyrighted by SQLBI.
+References consulted for DAX query plan parsing and visualization.
 
 ---
-*Generated during Visual Query Plan Phase 2 development*
+
+## SQLBI (Alberto Ferrari, Marco Russo)
+
+- https://docs.sqlbi.com/dax-internals/vertipaq/logical-query-plan
+  - Documents 11 logical operators including VarScope, ScalarVarProxy, TableVarProxy, GroupSemiJoin.
+
+- https://docs.sqlbi.com/dax-internals/vertipaq/physical-query-plan
+  - Documents physical execution operators and performance implications.
+
+- https://docs.sqlbi.com/dax-internals/vertipaq/xmSQL
+  - Comprehensive xmSQL reference: implicit GROUP BY, JOIN types, aggregations, callbacks, batches, bitmap indexing.
+
+- https://www.sqlbi.com/articles/formula-engine-and-storage-engine-in-dax/
+  - FE/SE architecture overview: single-threaded FE, multi-threaded SE, datacache materialization, VertiPaq vs DirectQuery storage engines.
+
+## MDX DAX Blog (Alberto Ferrari)
+
+- https://mdxdax.blogspot.com/2011/12/dax-query-plan-part-1-introduction.html
+  - Introduces plan types, operator suffixes (ScaLogOp, RelLogOp, LookupPhyOp, IterPhyOp).
+
+- https://mdxdax.blogspot.com/2012/01/dax-query-plan-part-2-operator.html
+  - Details operator properties (DependOnCols, RequiredCols, IterCols, LookupCols) and column list format.
+
+- https://mdxdax.blogspot.com/2012/03/dax-query-plan-part-3-vertipaq.html
+  - Documents VertiPaq logical operators, Scan_Vertipaq properties (JoinCols, SemijoinCols, BlankRow), and aggregations.
+
+## DaxStudio Documentation
+
+- https://daxstudio.org/docs/features/traces/server-timings-trace/
+  - Server Timings metrics: Total, SE CPU, FE, SE, SE Queries, SE Cache; FE calculated as Total minus SE duration.
+
+## PDF Documents
+
+- https://www.sqlbi.com/wp-content/uploads/DAX-Query-Plans.pdf (Alberto Ferrari / SQLBI, 29 pages)
+  - Comprehensive optimization guide: FE vs SE architecture, CallbackDataID behavior, cache usage, #Records materialization, CONTAINS translation pattern, xmSQL DC_KIND/PFCAST/COALESCE.
+
+## dax.guide
+
+- https://dax.guide/dt/variant/
+  - Documents the Variant data type: used for expressions returning different types based on conditions (e.g., IF returning number or string). Cannot be used for table columns, only in measures/expressions.
+
+---
+
+*Last updated: 2025-12-24*
