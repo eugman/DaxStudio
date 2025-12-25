@@ -264,27 +264,31 @@ namespace DaxStudio.QueryTrace
             // Also passes through specific event classes that may not have matching session info:
             // - ExecutionMetrics (timing data)
             // - VertiPaqSEQueryBegin, VertiPaqSEQueryEnd, VertiPaqSEQueryCacheMatch (SE events for timing correlation)
+            // - DirectQueryEnd (DirectQuery events for timing correlation)
+            // Note: Each <Or> element requires exactly 2 operands. For 8 conditions, we need 7 nested Or elements.
             string filterTemplate =
-                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
-                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
-                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
-                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
-                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
-                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
-                        "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +
-                          "<Equal><ColumnID>{0}</ColumnID><Value>{1}</Value></Equal>" +
-                          "<Equal><ColumnID>{2}</ColumnID><Value>{3}</Value></Equal>" +
+                "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +                 // Or1: (Or2) OR DirectQueryEnd
+                  "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +               // Or2: (Or3) OR SEQueryCacheMatch
+                    "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +             // Or3: (Or4) OR SEQueryEnd
+                      "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +           // Or4: (Or5) OR SEQueryBegin
+                        "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +         // Or5: (Or6) OR ExecutionMetrics
+                          "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +       // Or6: (Or7) OR SPID
+                            "<Or xmlns=\"http://schemas.microsoft.com/analysisservices/2003/engine\">" +     // Or7: SessionID OR ApplicationName
+                              "<Equal><ColumnID>{0}</ColumnID><Value>{1}</Value></Equal>" +                  // SessionID
+                              "<Equal><ColumnID>{2}</ColumnID><Value>{3}</Value></Equal>" +                  // ApplicationName
+                            "</Or>" +
+                            "<Equal><ColumnID>{4}</ColumnID><Value>{5}</Value></Equal>" +                    // SPID
+                          "</Or>" +
+                          "<Equal><ColumnID>{6}</ColumnID><Value>{7}</Value></Equal>" +                      // ExecutionMetrics
                         "</Or>" +
-                        "<Equal><ColumnID>{4}</ColumnID><Value>{5}</Value></Equal>" +
-                        "</Or>" +
-                        "<Equal><ColumnID>{6}</ColumnID><Value>{7}</Value></Equal>" +   // ExecutionMetrics
-                        "</Or>" +
-                        "<Equal><ColumnID>{6}</ColumnID><Value>{8}</Value></Equal>" +   // VertiPaqSEQueryBegin
-                        "</Or>" +
-                        "<Equal><ColumnID>{6}</ColumnID><Value>{9}</Value></Equal>" +   // VertiPaqSEQueryEnd
-                        "</Or>" +
-                        "<Equal><ColumnID>{6}</ColumnID><Value>{10}</Value></Equal>" +  // VertiPaqSEQueryCacheMatch
-                        "</Or>";
+                        "<Equal><ColumnID>{6}</ColumnID><Value>{8}</Value></Equal>" +                        // VertiPaqSEQueryBegin
+                      "</Or>" +
+                      "<Equal><ColumnID>{6}</ColumnID><Value>{9}</Value></Equal>" +                          // VertiPaqSEQueryEnd
+                    "</Or>" +
+                    "<Equal><ColumnID>{6}</ColumnID><Value>{10}</Value></Equal>" +                           // VertiPaqSEQueryCacheMatch
+                  "</Or>" +
+                  "<Equal><ColumnID>{6}</ColumnID><Value>{11}</Value></Equal>" +                             // DirectQueryEnd
+                "</Or>";
             var filterXml = string.Format(
                 filterTemplate
                 , (int)TraceColumn.SessionID
@@ -298,6 +302,7 @@ namespace DaxStudio.QueryTrace
                 , (int)TraceEventClass.VertiPaqSEQueryBegin
                 , (int)TraceEventClass.VertiPaqSEQueryEnd
                 , (int)TraceEventClass.VertiPaqSEQueryCacheMatch
+                , (int)TraceEventClass.DirectQueryEnd
                 );
             var doc = new XmlDocument();
             doc.LoadXml(filterXml);

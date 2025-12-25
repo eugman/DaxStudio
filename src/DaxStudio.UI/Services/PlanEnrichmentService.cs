@@ -58,7 +58,7 @@ namespace DaxStudio.UI.Services
                 // Step 1: Parse and build tree structure
                 var nodes = BuildTreeFromRows(rows);
                 plan.AllNodes = nodes;
-                plan.RootNode = nodes.FirstOrDefault(n => n.Level == 0);
+                plan.RootNode = GetEffectiveRootNode(nodes);
                 plan.State = PlanState.Parsed;
 
                 // Step 2: Resolve column names
@@ -124,7 +124,7 @@ namespace DaxStudio.UI.Services
                 // Build tree from rows (logical plans have same structure)
                 var nodes = BuildTreeFromQueryPlanRows(rows);
                 plan.AllNodes = nodes;
-                plan.RootNode = nodes.FirstOrDefault(n => n.Level == 0);
+                plan.RootNode = GetEffectiveRootNode(nodes);
                 plan.State = PlanState.Parsed;
 
                 // Resolve column names
@@ -154,6 +154,53 @@ namespace DaxStudio.UI.Services
 
                 return plan;
             }).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Gets the effective root node for the plan. When there are multiple Level 0 nodes,
+        /// creates a synthetic "Query" root that contains all Level 0 nodes as children.
+        /// For single root, returns that root directly.
+        /// </summary>
+        private EnrichedPlanNode GetEffectiveRootNode(List<EnrichedPlanNode> nodes)
+        {
+            if (nodes == null || nodes.Count == 0)
+                return null;
+
+            var rootNodes = nodes.Where(n => n.Level == 0).ToList();
+
+            if (rootNodes.Count == 0)
+                return null;
+
+            if (rootNodes.Count == 1)
+                return rootNodes[0];
+
+            // Multiple root nodes - create a synthetic "Query" root to contain them all
+            // This occurs with DEFINE VAR patterns where multiple subtrees exist
+            Log.Debug("PlanEnrichmentService: Found {Count} root-level nodes, creating synthetic Query root", rootNodes.Count);
+
+            // Find the minimum NodeId to create a unique ID for the synthetic root
+            var minNodeId = nodes.Min(n => n.NodeId);
+            var syntheticNodeId = minNodeId - 1; // Ensure unique ID below all other nodes
+
+            var syntheticRoot = new EnrichedPlanNode
+            {
+                NodeId = syntheticNodeId,
+                Level = -1, // Above Level 0
+                Operation = "Query",
+                ResolvedOperation = "Query"
+            };
+
+            // Add all root nodes as children of the synthetic root
+            foreach (var rootNode in rootNodes)
+            {
+                rootNode.Parent = syntheticRoot;
+                syntheticRoot.Children.Add(rootNode);
+            }
+
+            // Add synthetic root to the nodes list so it's included in BuildTree processing
+            nodes.Insert(0, syntheticRoot);
+
+            return syntheticRoot;
         }
 
         private List<EnrichedPlanNode> BuildTreeFromRows(List<PhysicalQueryPlanRow> rows)
@@ -254,7 +301,7 @@ namespace DaxStudio.UI.Services
             long totalSeCpu = 0;
             int cacheHits = 0;
 
-            // Collect ALL Storage Engine nodes (not just one per table)
+            // Collect ALL Storage Engine and DirectQuery nodes (not just one per table)
             // We'll match by column overlap, so multiple nodes for the same table is fine
             var allScanNodes = plan.AllNodes.Where(n => n.Operation != null &&
                 (n.Operation.Contains("Scan_Vertipaq") ||
@@ -266,7 +313,8 @@ namespace DaxStudio.UI.Services
                  n.Operation.Contains("GroupBy_Vertipaq") ||
                  n.Operation.Contains("Filter_Vertipaq") ||
                  n.Operation.Contains("DistinctCount_Vertipaq") ||
-                 n.Operation.Contains("_Vertipaq"))).ToList();
+                 n.Operation.Contains("_Vertipaq") ||
+                 n.Operation.Contains("DirectQueryResult"))).ToList();
 
             // Pre-extract columns from each scan node's RequiredCols
             var scanNodeColumns = new Dictionary<EnrichedPlanNode, HashSet<string>>();
@@ -339,10 +387,10 @@ namespace DaxStudio.UI.Services
                 if (bestMatch != null && bestOverlap > 0)
                 {
                     matchedNodes.Add(bestMatch.NodeId);
-                    Log.Information(">>> PlanEnrichmentService: MATCHED event to node {NodeId} (overlap={Overlap}, table='{Table}')",
-                        bestMatch.NodeId, bestOverlap, ExtractTableNameFromOperation(bestMatch.Operation));
+                    Log.Information(">>> PlanEnrichmentService: MATCHED event to node {NodeId} (overlap={Overlap}, table='{Table}', IsDirectQuery={IsDirectQuery})",
+                        bestMatch.NodeId, bestOverlap, ExtractTableNameFromOperation(bestMatch.Operation), evt.IsDirectQuery);
 
-                    // Populate xmSQL data
+                    // Populate xmSQL/SQL data
                     bestMatch.XmSql = evt.TextData ?? evt.Query;
                     bestMatch.ResolvedXmSql = evt.Query ?? evt.TextData;
                     bestMatch.DurationMs = evt.Duration;
@@ -350,7 +398,7 @@ namespace DaxStudio.UI.Services
                     bestMatch.EstimatedRows = evt.EstimatedRows;
                     bestMatch.EstimatedKBytes = evt.EstimatedKBytes;
                     bestMatch.IsCacheHit = isCacheHit;
-                    bestMatch.EngineType = EngineType.StorageEngine;
+                    bestMatch.EngineType = evt.IsDirectQuery ? EngineType.DirectQuery : EngineType.StorageEngine;
                     bestMatch.ObjectName = xmSqlTable;
 
                     // RECONCILE ROW COUNTS
@@ -538,7 +586,11 @@ namespace DaxStudio.UI.Services
 
                 // Fallback: pattern-based heuristic for operators not in dictionary
                 var op = node.Operation?.ToUpperInvariant() ?? string.Empty;
-                if (op.Contains("VERTIPAQ") || op.Contains("CACHE") || op.Contains("DIRECTQUERY"))
+                if (op.Contains("DIRECTQUERY"))
+                {
+                    node.EngineType = EngineType.DirectQuery;
+                }
+                else if (op.Contains("VERTIPAQ") || op.Contains("CACHE"))
                 {
                     node.EngineType = EngineType.StorageEngine;
                 }

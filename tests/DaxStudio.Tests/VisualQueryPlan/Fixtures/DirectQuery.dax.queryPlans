@@ -1,0 +1,487 @@
+{
+  "FileFormatVersion": 3,
+  "PhysicalQueryPlanRows": [
+    {
+      "Records": null,
+      "Operation": "PartitionIntoGroups: IterPhyOp LogOp=Order IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) #Groups=1 #Rows=502",
+      "IndentedOperation": "PartitionIntoGroups: IterPhyOp LogOp=Order IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) #Groups=1 #Rows=502",
+      "Level": 0,
+      "RowNumber": 1,
+      "NextSiblingRowNumber": 28,
+      "HighlightRow": false
+    },
+    {
+      "Records": 1,
+      "Operation": "AggregationSpool<Order>: SpoolPhyOp #Records=1",
+      "IndentedOperation": "    AggregationSpool<Order>: SpoolPhyOp #Records=1",
+      "Level": 1,
+      "RowNumber": 2,
+      "NextSiblingRowNumber": 28,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "IndentedOperation": "        Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "Level": 2,
+      "RowNumber": 3,
+      "NextSiblingRowNumber": 26,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "PartitionIntoGroups: IterPhyOp LogOp=TopN IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) #Groups=1 #Rows=502",
+      "IndentedOperation": "            PartitionIntoGroups: IterPhyOp LogOp=TopN IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) #Groups=1 #Rows=502",
+      "Level": 3,
+      "RowNumber": 4,
+      "NextSiblingRowNumber": 26,
+      "HighlightRow": false
+    },
+    {
+      "Records": 1,
+      "Operation": "AggregationSpool<Top>: SpoolPhyOp #Records=1",
+      "IndentedOperation": "                AggregationSpool<Top>: SpoolPhyOp #Records=1",
+      "Level": 4,
+      "RowNumber": 5,
+      "NextSiblingRowNumber": 26,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "IndentedOperation": "                    Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "Level": 5,
+      "RowNumber": 6,
+      "NextSiblingRowNumber": 23,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Union: IterPhyOp LogOp=Union IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "IndentedOperation": "                        Union: IterPhyOp LogOp=Union IterCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "Level": 6,
+      "RowNumber": 7,
+      "NextSiblingRowNumber": 23,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "IndentedOperation": "                            GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "Level": 7,
+      "RowNumber": 8,
+      "NextSiblingRowNumber": 19,
+      "HighlightRow": false
+    },
+    {
+      "Records": 19119,
+      "Operation": "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Sales SalesOrderHeader'[CustomerID]) #Records=19119 #KeyCols=1 #ValueCols=1",
+      "IndentedOperation": "                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Sales SalesOrderHeader'[CustomerID]) #Records=19119 #KeyCols=1 #ValueCols=1",
+      "Level": 8,
+      "RowNumber": 9,
+      "NextSiblingRowNumber": 19,
+      "HighlightRow": false
+    },
+    {
+      "Records": 19119,
+      "Operation": "AggregationSpool<AggFusion<Sum>>: SpoolPhyOp #Records=19119",
+      "IndentedOperation": "                                    AggregationSpool<AggFusion<Sum>>: SpoolPhyOp #Records=19119",
+      "Level": 9,
+      "RowNumber": 10,
+      "NextSiblingRowNumber": 19,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "CrossApply: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Sales SalesOrderHeader'[CustomerID])",
+      "IndentedOperation": "                                        CrossApply: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Sales SalesOrderHeader'[CustomerID])",
+      "Level": 10,
+      "RowNumber": 11,
+      "NextSiblingRowNumber": 19,
+      "HighlightRow": false
+    },
+    {
+      "Records": 31465,
+      "Operation": "Spool_MultiValuedHashLookup: IterPhyOp LogOp=TreatAs LookupCols(1)('Sales SalesOrderDetail'[SalesOrderID]) IterCols(0)('Sales SalesOrderHeader'[CustomerID]) #Records=31465 #KeyCols=2 #ValueCols=0",
+      "IndentedOperation": "                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=TreatAs LookupCols(1)('Sales SalesOrderDetail'[SalesOrderID]) IterCols(0)('Sales SalesOrderHeader'[CustomerID]) #Records=31465 #KeyCols=2 #ValueCols=0",
+      "Level": 11,
+      "RowNumber": 12,
+      "NextSiblingRowNumber": 18,
+      "HighlightRow": false
+    },
+    {
+      "Records": 31465,
+      "Operation": "AggregationSpool<GroupBy>: SpoolPhyOp #Records=31465",
+      "IndentedOperation": "                                                AggregationSpool<GroupBy>: SpoolPhyOp #Records=31465",
+      "Level": 12,
+      "RowNumber": 13,
+      "NextSiblingRowNumber": 18,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "TreatAs: IterPhyOp LogOp=TreatAs IterCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[SalesOrderID])",
+      "IndentedOperation": "                                                    TreatAs: IterPhyOp LogOp=TreatAs IterCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[SalesOrderID])",
+      "Level": 13,
+      "RowNumber": 14,
+      "NextSiblingRowNumber": 18,
+      "HighlightRow": false
+    },
+    {
+      "Records": 31465,
+      "Operation": "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderHeader'[SalesOrderID]) #Records=31465 #KeyCols=79 #ValueCols=0",
+      "IndentedOperation": "                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderHeader'[SalesOrderID]) #Records=31465 #KeyCols=79 #ValueCols=0",
+      "Level": 14,
+      "RowNumber": 15,
+      "NextSiblingRowNumber": 18,
+      "HighlightRow": false
+    },
+    {
+      "Records": 31465,
+      "Operation": "ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=31465",
+      "IndentedOperation": "                                                            ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=31465",
+      "Level": 15,
+      "RowNumber": 16,
+      "NextSiblingRowNumber": 18,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Cache: IterPhyOp #FieldCols=2 #ValueCols=0",
+      "IndentedOperation": "                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=0",
+      "Level": 16,
+      "RowNumber": 17,
+      "NextSiblingRowNumber": 17,
+      "HighlightRow": true
+    },
+    {
+      "Records": null,
+      "Operation": "DirectQueryResult : IterPhyOp #FieldCols=1 #ValueCols=1 Fields('Sales SalesOrderDetail'[SalesOrderID])",
+      "IndentedOperation": "                                            DirectQueryResult : IterPhyOp #FieldCols=1 #ValueCols=1 Fields('Sales SalesOrderDetail'[SalesOrderID])",
+      "Level": 11,
+      "RowNumber": 18,
+      "NextSiblingRowNumber": 18,
+      "HighlightRow": true
+    },
+    {
+      "Records": null,
+      "Operation": "GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "IndentedOperation": "                            GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "Level": 7,
+      "RowNumber": 19,
+      "NextSiblingRowNumber": 23,
+      "HighlightRow": false
+    },
+    {
+      "Records": 1,
+      "Operation": "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=79 #ValueCols=1",
+      "IndentedOperation": "                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=79 #ValueCols=1",
+      "Level": 8,
+      "RowNumber": 20,
+      "NextSiblingRowNumber": 23,
+      "HighlightRow": false
+    },
+    {
+      "Records": 1,
+      "Operation": "ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1",
+      "IndentedOperation": "                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1",
+      "Level": 9,
+      "RowNumber": 21,
+      "NextSiblingRowNumber": 23,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "DirectQueryResult : IterPhyOp #FieldCols=0 #ValueCols=1 Fields()",
+      "IndentedOperation": "                                        DirectQueryResult : IterPhyOp #FieldCols=0 #ValueCols=1 Fields()",
+      "Level": 10,
+      "RowNumber": 22,
+      "NextSiblingRowNumber": 22,
+      "HighlightRow": true
+    },
+    {
+      "Records": null,
+      "Operation": "ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue<''[IsGrandTotalRowTotal]>''[IsGrandTotalRowTotal] LookupCols(1)(''[IsGrandTotalRowTotal]) Boolean",
+      "IndentedOperation": "                    ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue<''[IsGrandTotalRowTotal]>''[IsGrandTotalRowTotal] LookupCols(1)(''[IsGrandTotalRowTotal]) Boolean",
+      "Level": 5,
+      "RowNumber": 23,
+      "NextSiblingRowNumber": 23,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "ColValue<'Sales SalesOrderHeader'[CustomerID]>: LookupPhyOp LogOp=ColValue<'Sales SalesOrderHeader'[CustomerID]>'Sales SalesOrderHeader'[CustomerID] LookupCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer",
+      "IndentedOperation": "                    ColValue<'Sales SalesOrderHeader'[CustomerID]>: LookupPhyOp LogOp=ColValue<'Sales SalesOrderHeader'[CustomerID]>'Sales SalesOrderHeader'[CustomerID] LookupCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer",
+      "Level": 5,
+      "RowNumber": 24,
+      "NextSiblingRowNumber": 24,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "Constant: LookupPhyOp LogOp=Constant Integer 502",
+      "IndentedOperation": "                    Constant: LookupPhyOp LogOp=Constant Integer 502",
+      "Level": 5,
+      "RowNumber": 25,
+      "NextSiblingRowNumber": 25,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue<''[IsGrandTotalRowTotal]>''[IsGrandTotalRowTotal] LookupCols(1)(''[IsGrandTotalRowTotal]) Boolean",
+      "IndentedOperation": "        ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue<''[IsGrandTotalRowTotal]>''[IsGrandTotalRowTotal] LookupCols(1)(''[IsGrandTotalRowTotal]) Boolean",
+      "Level": 2,
+      "RowNumber": 26,
+      "NextSiblingRowNumber": 26,
+      "HighlightRow": false
+    },
+    {
+      "Records": null,
+      "Operation": "ColValue<'Sales SalesOrderHeader'[CustomerID]>: LookupPhyOp LogOp=ColValue<'Sales SalesOrderHeader'[CustomerID]>'Sales SalesOrderHeader'[CustomerID] LookupCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer",
+      "IndentedOperation": "        ColValue<'Sales SalesOrderHeader'[CustomerID]>: LookupPhyOp LogOp=ColValue<'Sales SalesOrderHeader'[CustomerID]>'Sales SalesOrderHeader'[CustomerID] LookupCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer",
+      "Level": 2,
+      "RowNumber": 27,
+      "NextSiblingRowNumber": 28,
+      "HighlightRow": false
+    }
+  ],
+  "LogicalQueryPlanRows": [
+    {
+      "Operation": "__DS0Core: Union: RelLogOp VarName=__DS0Core DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "IndentedOperation": "__DS0Core: Union: RelLogOp VarName=__DS0Core DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "Level": 0,
+      "RowNumber": 1,
+      "NextSiblingRowNumber": 21,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "GroupSemiJoin: RelLogOp DependOnCols()() 0-2 RequiredCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "IndentedOperation": "    GroupSemiJoin: RelLogOp DependOnCols()() 0-2 RequiredCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "Level": 1,
+      "RowNumber": 2,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Sales SalesOrderHeader'[CustomerID])",
+      "IndentedOperation": "        Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Sales SalesOrderHeader'[CustomerID])",
+      "Level": 2,
+      "RowNumber": 3,
+      "NextSiblingRowNumber": 3,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Constant: ScaLogOp DependOnCols()() Boolean DominantValue=false",
+      "IndentedOperation": "        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=false",
+      "Level": 2,
+      "RowNumber": 4,
+      "NextSiblingRowNumber": 4,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Sum_Vertipaq: ScaLogOp MeasureRef=[Total] DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) Currency DominantValue=BLANK",
+      "IndentedOperation": "        Sum_Vertipaq: ScaLogOp MeasureRef=[Total] DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) Currency DominantValue=BLANK",
+      "Level": 2,
+      "RowNumber": 5,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "CalculateTable_Vertipaq: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 2-13 RequiredCols(0, 6, 9)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice])",
+      "IndentedOperation": "            CalculateTable_Vertipaq: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 2-13 RequiredCols(0, 6, 9)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice])",
+      "Level": 3,
+      "RowNumber": 6,
+      "NextSiblingRowNumber": 11,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 2-13 RequiredCols(0, 6, 9)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice])",
+      "IndentedOperation": "                Scan_Vertipaq: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 2-13 RequiredCols(0, 6, 9)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice])",
+      "Level": 4,
+      "RowNumber": 7,
+      "NextSiblingRowNumber": 7,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "TreatAs: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 1-1 RequiredCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[SalesOrderID])",
+      "IndentedOperation": "                TreatAs: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 1-1 RequiredCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderDetail'[SalesOrderID])",
+      "Level": 4,
+      "RowNumber": 8,
+      "NextSiblingRowNumber": 11,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 1-1 RequiredCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderHeader'[SalesOrderID])",
+      "IndentedOperation": "                    Scan_Vertipaq: RelLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) 1-1 RequiredCols(0, 1)('Sales SalesOrderHeader'[CustomerID], 'Sales SalesOrderHeader'[SalesOrderID])",
+      "Level": 5,
+      "RowNumber": 9,
+      "NextSiblingRowNumber": 9,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols()() 2-2 RequiredCols(2)('Sales SalesOrderDetail'[SalesOrderID])",
+      "IndentedOperation": "                    Scan_Vertipaq: RelLogOp DependOnCols()() 2-2 RequiredCols(2)('Sales SalesOrderDetail'[SalesOrderID])",
+      "Level": 5,
+      "RowNumber": 10,
+      "NextSiblingRowNumber": 10,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Multiply: ScaLogOp DependOnCols(6, 9)('Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "IndentedOperation": "            Multiply: ScaLogOp DependOnCols(6, 9)('Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "Level": 3,
+      "RowNumber": 11,
+      "NextSiblingRowNumber": 14,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Sales SalesOrderDetail'[OrderQty]: ScaLogOp DependOnCols(6)('Sales SalesOrderDetail'[OrderQty]) Integer DominantValue=NONE",
+      "IndentedOperation": "                'Sales SalesOrderDetail'[OrderQty]: ScaLogOp DependOnCols(6)('Sales SalesOrderDetail'[OrderQty]) Integer DominantValue=NONE",
+      "Level": 4,
+      "RowNumber": 12,
+      "NextSiblingRowNumber": 12,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Sales SalesOrderDetail'[UnitPrice]: ScaLogOp DependOnCols(9)('Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "IndentedOperation": "                'Sales SalesOrderDetail'[UnitPrice]: ScaLogOp DependOnCols(9)('Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "Level": 4,
+      "RowNumber": 13,
+      "NextSiblingRowNumber": 13,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "GroupSemiJoin: RelLogOp DependOnCols()() 0-2 RequiredCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "IndentedOperation": "    GroupSemiJoin: RelLogOp DependOnCols()() 0-2 RequiredCols(0, 1, 2)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])",
+      "Level": 1,
+      "RowNumber": 14,
+      "NextSiblingRowNumber": 21,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Constant: ScaLogOp DependOnCols()() Boolean DominantValue=true",
+      "IndentedOperation": "        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=true",
+      "Level": 2,
+      "RowNumber": 15,
+      "NextSiblingRowNumber": 15,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Sum_Vertipaq: ScaLogOp MeasureRef=[Total] DependOnCols()() Currency DominantValue=BLANK",
+      "IndentedOperation": "        Sum_Vertipaq: ScaLogOp MeasureRef=[Total] DependOnCols()() Currency DominantValue=BLANK",
+      "Level": 2,
+      "RowNumber": 16,
+      "NextSiblingRowNumber": 21,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Scan_Vertipaq: RelLogOp DependOnCols()() 0-11 RequiredCols(4, 7)('Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice])",
+      "IndentedOperation": "            Scan_Vertipaq: RelLogOp DependOnCols()() 0-11 RequiredCols(4, 7)('Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice])",
+      "Level": 3,
+      "RowNumber": 17,
+      "NextSiblingRowNumber": 17,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Multiply: ScaLogOp DependOnCols(4, 7)('Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "IndentedOperation": "            Multiply: ScaLogOp DependOnCols(4, 7)('Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "Level": 3,
+      "RowNumber": 18,
+      "NextSiblingRowNumber": 21,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Sales SalesOrderDetail'[OrderQty]: ScaLogOp DependOnCols(4)('Sales SalesOrderDetail'[OrderQty]) Integer DominantValue=NONE",
+      "IndentedOperation": "                'Sales SalesOrderDetail'[OrderQty]: ScaLogOp DependOnCols(4)('Sales SalesOrderDetail'[OrderQty]) Integer DominantValue=NONE",
+      "Level": 4,
+      "RowNumber": 19,
+      "NextSiblingRowNumber": 19,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Sales SalesOrderDetail'[UnitPrice]: ScaLogOp DependOnCols(7)('Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "IndentedOperation": "                'Sales SalesOrderDetail'[UnitPrice]: ScaLogOp DependOnCols(7)('Sales SalesOrderDetail'[UnitPrice]) Currency DominantValue=NONE",
+      "Level": 4,
+      "RowNumber": 20,
+      "NextSiblingRowNumber": 20,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "__DS0PrimaryWindowed: TopN: RelLogOp VarName=__DS0PrimaryWindowed DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "IndentedOperation": "__DS0PrimaryWindowed: TopN: RelLogOp VarName=__DS0PrimaryWindowed DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "Level": 0,
+      "RowNumber": 21,
+      "NextSiblingRowNumber": 26,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "TableVarProxy: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) RefVarName=__DS0Core",
+      "IndentedOperation": "    TableVarProxy: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) RefVarName=__DS0Core",
+      "Level": 1,
+      "RowNumber": 22,
+      "NextSiblingRowNumber": 22,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Constant: ScaLogOp DependOnCols()() Integer DominantValue=502",
+      "IndentedOperation": "    Constant: ScaLogOp DependOnCols()() Integer DominantValue=502",
+      "Level": 1,
+      "RowNumber": 23,
+      "NextSiblingRowNumber": 23,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE",
+      "IndentedOperation": "    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE",
+      "Level": 1,
+      "RowNumber": 24,
+      "NextSiblingRowNumber": 24,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Sales SalesOrderHeader'[CustomerID]: ScaLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer DominantValue=NONE",
+      "IndentedOperation": "    'Sales SalesOrderHeader'[CustomerID]: ScaLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer DominantValue=NONE",
+      "Level": 1,
+      "RowNumber": 25,
+      "NextSiblingRowNumber": 25,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "Order: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "IndentedOperation": "Order: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])",
+      "Level": 0,
+      "RowNumber": 26,
+      "NextSiblingRowNumber": 30,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "TableVarProxy: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) RefVarName=__DS0PrimaryWindowed",
+      "IndentedOperation": "    TableVarProxy: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales SalesOrderHeader'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) RefVarName=__DS0PrimaryWindowed",
+      "Level": 1,
+      "RowNumber": 27,
+      "NextSiblingRowNumber": 27,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE",
+      "IndentedOperation": "    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(1)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE",
+      "Level": 1,
+      "RowNumber": 28,
+      "NextSiblingRowNumber": 28,
+      "HighlightRow": false
+    },
+    {
+      "Operation": "'Sales SalesOrderHeader'[CustomerID]: ScaLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer DominantValue=NONE",
+      "IndentedOperation": "    'Sales SalesOrderHeader'[CustomerID]: ScaLogOp DependOnCols(0)('Sales SalesOrderHeader'[CustomerID]) Integer DominantValue=NONE",
+      "Level": 1,
+      "RowNumber": 29,
+      "NextSiblingRowNumber": 30,
+      "HighlightRow": false
+    }
+  ],
+  "ActivityID": "A8008648-A68A-4899-A3E4-80FDAD85FC89",
+  "RequestID": "4A3913F4-B427-4D43-8B59-2D56F97FCCE9",
+  "CommandText": "DEFINE\n\tVAR __DS0Core = \n\t\tSUMMARIZECOLUMNS(\n\t\t\tROLLUPADDISSUBTOTAL('Sales SalesOrderHeader'[CustomerID], \"IsGrandTotalRowTotal\"),\n\t\t\t\"Total\", 'Sales SalesOrderDetail'[Total]\n\t\t)\n\n\tVAR __DS0PrimaryWindowed = \n\t\tTOPN(502, __DS0Core, [IsGrandTotalRowTotal], 0, 'Sales SalesOrderHeader'[CustomerID], 1)\n\nEVALUATE\n\t__DS0PrimaryWindowed\n\nORDER BY\n\t[IsGrandTotalRowTotal] DESC, 'Sales SalesOrderHeader'[CustomerID]",
+  "Parameters": null,
+  "StartDatetime": "2025-12-25T08:42:07.223333-05:00"
+}

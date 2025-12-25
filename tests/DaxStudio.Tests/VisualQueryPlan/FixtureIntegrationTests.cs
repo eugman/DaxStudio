@@ -490,6 +490,180 @@ namespace DaxStudio.Tests.VisualQueryPlan
 
         #endregion
 
+        #region DirectQuery Specific Tests
+
+        [TestMethod]
+        public async Task DirectQuery_LogicalPlan_HasAllRootLevelOperators()
+        {
+            // Arrange - DirectQuery logical plan has multiple root-level nodes (Level 0)
+            // __DS0Core, __DS0PrimaryWindowed, and Order
+            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            var enrichmentService = new PlanEnrichmentService();
+            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
+
+            // Act
+            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
+
+            // Assert - Should have 3 Level 0 nodes in AllNodes
+            var rootLevelNodes = plan.AllNodes.Where(n => n.Level == 0).ToList();
+            Assert.IsTrue(rootLevelNodes.Count >= 3,
+                $"Should have at least 3 root-level nodes (__DS0Core, __DS0PrimaryWindowed, Order). Found {rootLevelNodes.Count}: {string.Join(", ", rootLevelNodes.Select(n => GetOperatorName(n.Operation)))}");
+
+            // Specifically check for Order
+            var orderNode = rootLevelNodes.FirstOrDefault(n => n.Operation?.StartsWith("Order") == true);
+            Assert.IsNotNull(orderNode, "Should have Order as a root-level node");
+        }
+
+        [TestMethod]
+        public async Task DirectQuery_LogicalPlan_TreeIncludesAllRoots()
+        {
+            // Arrange
+            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            var enrichmentService = new PlanEnrichmentService();
+            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
+
+            // Act
+            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var tree = PlanNodeViewModel.BuildTree(plan);
+            var allVisibleNodes = GetAllNodes(tree).ToList();
+
+            // Assert - Order should be visible in the tree
+            var orderNodes = allVisibleNodes.Where(n =>
+                n.OperatorName == "Order" || n.Operation?.Contains("Order") == true).ToList();
+            Assert.IsTrue(orderNodes.Count >= 1,
+                $"Order operator should be visible in tree. Found operators: {string.Join(", ", allVisibleNodes.Select(n => n.OperatorName))}");
+        }
+
+        [TestMethod]
+        public async Task DirectQuery_PhysicalPlan_HasDirectQueryResultNodes()
+        {
+            // Arrange
+            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            var enrichmentService = new PlanEnrichmentService();
+            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
+
+            // Act
+            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var tree = PlanNodeViewModel.BuildTree(plan);
+            var allNodes = GetAllNodes(tree).ToList();
+
+            // Assert - Should have DirectQueryResult nodes
+            var dqNodes = allNodes.Where(n => n.OperatorName == "DirectQueryResult").ToList();
+            Assert.IsTrue(dqNodes.Count >= 1,
+                $"Should have DirectQueryResult nodes. Found: {string.Join(", ", allNodes.Select(n => n.OperatorName).Distinct())}");
+        }
+
+        [TestMethod]
+        public async Task DirectQuery_PhysicalPlan_ColValueShowsColumn()
+        {
+            // Arrange - ColValue<'Table'[Column]> should show the column
+            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            var enrichmentService = new PlanEnrichmentService();
+            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
+
+            // Act
+            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var tree = PlanNodeViewModel.BuildTree(plan);
+            var allNodes = GetAllNodes(tree).ToList();
+
+            // Assert - ColValue nodes should show the column in their detail
+            var colValueNodes = allNodes.Where(n =>
+                n.OperatorName?.StartsWith("ColValue") == true ||
+                n.Operation?.Contains("ColValue<") == true).ToList();
+
+            foreach (var cvNode in colValueNodes)
+            {
+                // Should have column info from either DisplayDetail or from the angle brackets
+                var hasColumnInfo = !string.IsNullOrEmpty(cvNode.DisplayDetail) ||
+                                    cvNode.Operation?.Contains("[") == true;
+                Assert.IsTrue(hasColumnInfo,
+                    $"ColValue node should show column info. Operation: {cvNode.Operation}, DisplayDetail: {cvNode.DisplayDetail}");
+            }
+        }
+
+        [TestMethod]
+        public async Task DirectQuery_PhysicalPlan_UnionShowsIterCols()
+        {
+            // Arrange - Union should show its IterCols
+            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            var enrichmentService = new PlanEnrichmentService();
+            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
+
+            // Act
+            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var tree = PlanNodeViewModel.BuildTree(plan);
+            var allNodes = GetAllNodes(tree).ToList();
+
+            // Assert - Union nodes have IterCols in their operation
+            var unionNodes = allNodes.Where(n => n.OperatorName == "Union").ToList();
+            foreach (var union in unionNodes)
+            {
+                Assert.IsTrue(union.HasIterCols,
+                    $"Union should have IterCols. Operation: {union.Operation}");
+            }
+        }
+
+        [TestMethod]
+        public async Task DirectQuery_PhysicalPlan_GroupSemijoinShowsIterCols()
+        {
+            // Arrange - GroupSemijoin should show its IterCols
+            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            var enrichmentService = new PlanEnrichmentService();
+            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
+
+            // Act
+            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var tree = PlanNodeViewModel.BuildTree(plan);
+            var allNodes = GetAllNodes(tree).ToList();
+
+            // Assert - GroupSemijoin nodes have IterCols
+            var gsNodes = allNodes.Where(n => n.OperatorName == "GroupSemijoin").ToList();
+            foreach (var gs in gsNodes)
+            {
+                Assert.IsTrue(gs.HasIterCols,
+                    $"GroupSemijoin should have IterCols. Operation: {gs.Operation}");
+            }
+        }
+
+        [TestMethod]
+        public async Task DirectQuery_ServerTimings_HasDirectQueryEvents()
+        {
+            // Arrange - Server timings should have DirectQueryEnd events
+            var timingsFixture = LoadServerTimingsFixture("DirectQuery.dax");
+
+            // Act
+            var seEvents = ToStorageEngineEvents(timingsFixture.StorageEngineEvents);
+
+            // Assert - Should have events (DirectQueryEnd is captured as SE event)
+            Assert.IsTrue(seEvents.Count >= 1,
+                $"Should have server timing events. Found {seEvents.Count}");
+        }
+
+        [TestMethod]
+        public async Task DirectQuery_LogicalPlan_OrderIsInTree()
+        {
+            // Arrange
+            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            var enrichmentService = new PlanEnrichmentService();
+            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
+
+            // Act
+            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var tree = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - With multiple Level 0 nodes, root is "Query" and Order is a child
+            Assert.IsNotNull(tree, "Tree should be built");
+            Assert.AreEqual("Query", tree.OperatorName,
+                $"Root should be synthetic 'Query' for multiple Level 0 nodes, found '{tree.OperatorName}'");
+
+            // Order should be one of the children of the Query root
+            var orderChild = tree.Children.FirstOrDefault(c => c.OperatorName == "Order");
+            Assert.IsNotNull(orderChild,
+                $"Order should be a child of Query. Found children: {string.Join(", ", tree.Children.Select(c => c.OperatorName))}");
+        }
+
+        #endregion
+
         #region Helper Methods
 
         private static string GetOperatorName(string operation)

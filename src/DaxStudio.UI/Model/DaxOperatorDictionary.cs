@@ -306,6 +306,15 @@ namespace DaxStudio.UI.Model
                 Engine = EngineType.StorageEngine
             },
 
+            // DirectQuery Operators
+            ["DirectQueryResult"] = new DaxOperatorInfo
+            {
+                DisplayName = "DirectQuery Result",
+                Description = "Returns results from a DirectQuery operation. Query is sent to the external data source (SQL Server, etc.) rather than VertiPaq.",
+                Category = "DirectQuery",
+                Engine = EngineType.DirectQuery
+            },
+
             // Logical Operators
             ["Calculate"] = new DaxOperatorInfo
             {
@@ -559,6 +568,20 @@ namespace DaxStudio.UI.Model
                 Engine = EngineType.FormulaEngine,
                 DaxGuideUrl = "https://dax.guide/topn/"
             },
+            ["Order"] = new DaxOperatorInfo
+            {
+                DisplayName = "Order",
+                Description = "Sorts the result set by specified columns. Typically the root operator for queries returning sorted results.",
+                Category = "Sort",
+                Engine = EngineType.FormulaEngine
+            },
+            ["Query"] = new DaxOperatorInfo
+            {
+                DisplayName = "Query",
+                Description = "Synthetic root node containing all top-level query components (DEFINE variables and EVALUATE).",
+                Category = "Root",
+                Engine = EngineType.FormulaEngine
+            },
             ["GroupBy"] = new DaxOperatorInfo
             {
                 DisplayName = "Group By",
@@ -760,23 +783,19 @@ namespace DaxStudio.UI.Model
         /// <returns>Human-readable name or the original name if not found</returns>
         public static string GetDisplayName(string operatorName)
         {
-            // Special handling for ColValue and ColPosition - extract and display the column reference
-            if (operatorName != null &&
-                (operatorName.StartsWith("ColValue<", System.StringComparison.Ordinal) ||
-                 operatorName.StartsWith("ColPosition<", System.StringComparison.Ordinal)))
+            // Special handling for ColValue and ColPosition - return just the operator name
+            // The column reference is displayed separately via DisplayDetail in PlanNodeViewModel
+            if (operatorName != null)
             {
-                var startIdx = operatorName.IndexOf('<') + 1;
-                var endIdx = operatorName.LastIndexOf('>');
-                if (startIdx > 0 && endIdx > startIdx)
+                if (operatorName.StartsWith("ColValue<", System.StringComparison.Ordinal) ||
+                    operatorName.StartsWith("ColValue", System.StringComparison.Ordinal))
                 {
-                    var columnRef = operatorName.Substring(startIdx, endIdx - startIdx);
-                    // Clean up the column reference - strip empty table name prefix
-                    if (columnRef.StartsWith("''["))
-                    {
-                        columnRef = columnRef.Substring(2); // Remove '' prefix, keep [Column]
-                    }
-                    var prefix = operatorName.StartsWith("ColValue") ? "Column Value" : "Column Position";
-                    return $"{prefix}: {columnRef}";
+                    return "Column Value";
+                }
+                if (operatorName.StartsWith("ColPosition<", System.StringComparison.Ordinal) ||
+                    operatorName.StartsWith("ColPosition", System.StringComparison.Ordinal))
+                {
+                    return "Column Position";
                 }
             }
 

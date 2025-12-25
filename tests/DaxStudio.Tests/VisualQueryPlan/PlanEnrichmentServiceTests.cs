@@ -214,7 +214,8 @@ namespace DaxStudio.Tests.VisualQueryPlan
             row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Customer'[FirstName]) #Records=0", 1);
             rows.Add(row);
 
-            // Timing event with estimated rows and ObjectName for matching
+            // Timing event with xmSQL that contains matching column reference
+            // The correlation logic matches by column overlap extracted from xmSQL
             var timingEvents = new List<TraceStorageEngineEvent>
             {
                 new TraceStorageEngineEvent
@@ -222,8 +223,8 @@ namespace DaxStudio.Tests.VisualQueryPlan
                     Duration = 100,
                     CpuTime = 50,
                     EstimatedRows = 3655,  // Server timing shows actual rows
-                    ObjectName = "Customer",  // Must match table name in operation
-                    Query = "SELECT..."
+                    ObjectName = "Customer",
+                    Query = "SELECT 'Customer'[FirstName] FROM 'Customer'"  // Must have column reference
                 }
             };
 
@@ -249,7 +250,7 @@ namespace DaxStudio.Tests.VisualQueryPlan
             row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=1000", 1);
             rows.Add(row);
 
-            // Timing event with parallelism data and ObjectName for matching
+            // Timing event with xmSQL that contains matching column reference
             var timingEvents = new List<TraceStorageEngineEvent>
             {
                 new TraceStorageEngineEvent
@@ -257,8 +258,8 @@ namespace DaxStudio.Tests.VisualQueryPlan
                     Duration = 160,           // Total duration
                     NetParallelDuration = 10, // Net duration after parallelism
                     CpuTime = 150,
-                    ObjectName = "Sales",     // Must match table name in operation
-                    Query = "SELECT..."
+                    ObjectName = "Sales",
+                    Query = "SELECT 'Sales'[Amount] FROM 'Sales'"  // Must have column reference
                 }
             };
 
@@ -293,11 +294,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
             row3.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(0)('Internet Sales'[Margin]) #Records=0", 3);
             rows.Add(row3);
 
-            // Timing events matched by ObjectName
+            // Timing events with xmSQL containing matching column references
             var timingEvents = new List<TraceStorageEngineEvent>
             {
-                new TraceStorageEngineEvent { Duration = 50, CpuTime = 25, EstimatedRows = 673, ObjectName = "Customer" },
-                new TraceStorageEngineEvent { Duration = 30, CpuTime = 15, EstimatedRows = 1, ObjectName = "Internet Sales" }
+                new TraceStorageEngineEvent { Duration = 50, CpuTime = 25, EstimatedRows = 673, ObjectName = "Customer", Query = "SELECT 'Customer'[FirstName] FROM 'Customer'" },
+                new TraceStorageEngineEvent { Duration = 30, CpuTime = 15, EstimatedRows = 1, ObjectName = "Internet Sales", Query = "SELECT 'Internet Sales'[Margin] FROM 'Internet Sales'" }
             };
 
             // Act

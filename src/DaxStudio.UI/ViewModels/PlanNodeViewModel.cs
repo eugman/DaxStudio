@@ -123,12 +123,74 @@ namespace DaxStudio.UI.ViewModels
                 if (HasCacheColumnInfo)
                     return CacheColumnInfo;
 
-                // For Constant nodes, show the value from DominantValue
-                if (OperatorName == "Constant" && !string.IsNullOrEmpty(DominantValue))
-                    return FormatConstantValue(DominantValue);
+                // For DirectQuery nodes, show the Fields columns
+                if (HasDirectQueryFieldsInfo)
+                    return DirectQueryFieldsInfo;
+
+                // For aggregation nodes (Sum_Vertipaq, etc.), show the measure reference
+                if (HasMeasureReference && IsAggregationOperator)
+                    return MeasureReference;
+
+                // For Multiply and other arithmetic operators, show DependOnCols
+                if (HasDependOnColsInfo)
+                    return DependOnColsInfo;
+
+                // For Constant nodes, show the value
+                if (OperatorName == "Constant")
+                {
+                    // First try DominantValue=
+                    if (!string.IsNullOrEmpty(DominantValue))
+                        return FormatConstantValue(DominantValue);
+
+                    // Then try to extract value from type pattern (e.g., "Integer 502")
+                    var constValue = ExtractConstantValue();
+                    if (!string.IsNullOrEmpty(constValue))
+                        return FormatConstantValue(constValue);
+                }
+
+                // For ColValue<...> nodes, extract and show the column from angle brackets
+                if (OperatorName?.StartsWith("ColValue") == true)
+                {
+                    var colValueColumn = ExtractColValueColumn();
+                    if (!string.IsNullOrEmpty(colValueColumn))
+                        return colValueColumn;
+                }
+
+                // For Union, GroupSemijoin, CrossApply, TreatAs - show IterCols
+                if (IsJoinOrSetOperator && HasIterCols)
+                {
+                    return FormatIterColsForDisplay();
+                }
 
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Whether this operator is an aggregation operator (Sum_Vertipaq, Count_Vertipaq, etc.)
+        /// </summary>
+        private bool IsAggregationOperator
+        {
+            get
+            {
+                var opName = OperatorName;
+                return opName == "Sum_Vertipaq" ||
+                       opName == "Count_Vertipaq" ||
+                       opName == "Min_Vertipaq" ||
+                       opName == "Max_Vertipaq" ||
+                       opName == "Average_Vertipaq" ||
+                       opName == "Avg_Vertipaq";
+            }
+        }
+
+        /// <summary>
+        /// Extracts constant value from operation string patterns like "Integer 502" or "Currency 123.45"
+        /// </summary>
+        private string ExtractConstantValue()
+        {
+            var op = _node.Operation ?? string.Empty;
+            var match = Regex.Match(op, @"(?:Integer|Currency|Double|Decimal|Real)\s+(-?\d+\.?\d*)");
+            return match.Success ? match.Groups[1].Value : null;
         }
 
         /// <summary>
@@ -155,6 +217,68 @@ namespace DaxStudio.UI.ViewModels
 
             // Numeric and other values shown as-is
             return value;
+        }
+
+        /// <summary>
+        /// Extracts the column reference from ColValue angle brackets.
+        /// E.g., "ColValue&lt;'Sales'[Amount]&gt;" → "[Amount]"
+        /// </summary>
+        private string ExtractColValueColumn()
+        {
+            var op = _node.Operation ?? string.Empty;
+            // Pattern: ColValue<'Table'[Column]> or ColValue<''[Column]>
+            var match = Regex.Match(op, @"ColValue<('[^']*')?(\[[^\]]+\])>");
+            if (match.Success)
+            {
+                return match.Groups[2].Value; // Return just [Column]
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Whether this is a join or set operator that should show IterCols.
+        /// </summary>
+        private bool IsJoinOrSetOperator
+        {
+            get
+            {
+                var opName = OperatorName;
+                return opName == "Union" ||
+                       opName == "GroupSemijoin" ||
+                       opName == "GroupSemiJoin" ||
+                       opName == "CrossApply" ||
+                       opName == "TreatAs" ||
+                       opName == "LeftOuterJoin" ||
+                       opName == "InnerHashJoin" ||
+                       opName == "InnerJoin";
+            }
+        }
+
+        /// <summary>
+        /// Formats IterCols for display, showing abbreviated column list.
+        /// </summary>
+        private string FormatIterColsForDisplay()
+        {
+            var iterCols = IterCols;
+            if (string.IsNullOrEmpty(iterCols) || iterCols == "(empty)")
+                return null;
+
+            // IterCols contains full column references like 'Table'[Col1], 'Table'[Col2]
+            // Extract just the column names for brevity
+            var columnMatches = Regex.Matches(iterCols, @"'([^']+)'\[([^\]]+)\]");
+            if (columnMatches.Count == 0)
+                return iterCols; // Return as-is if no matches
+
+            if (columnMatches.Count == 1)
+            {
+                // Single column: show full reference
+                return iterCols;
+            }
+
+            // Multiple columns: show abbreviated format
+            var tableName = columnMatches[0].Groups[1].Value;
+            var colNames = columnMatches.Cast<Match>().Select(m => $"[{m.Groups[2].Value}]");
+            return $"'{tableName}': {string.Join(", ", colNames)}";
         }
 
         /// <summary>
@@ -205,6 +329,7 @@ namespace DaxStudio.UI.ViewModels
         {
             EngineType.StorageEngine => "SE",
             EngineType.FormulaEngine => "FE",
+            EngineType.DirectQuery => "DQ",
             _ => ""
         };
 
@@ -1218,6 +1343,7 @@ namespace DaxStudio.UI.ViewModels
                 {
                     EngineType.StorageEngine => "Storage Engine (SE)\nMulti-threaded, highly optimized for simple operations",
                     EngineType.FormulaEngine => "Formula Engine (FE)\nSingle-threaded, handles complex DAX expressions",
+                    EngineType.DirectQuery => "DirectQuery (DQ)\nQueries sent to external data source (SQL Server, etc.)",
                     _ => "Unknown Engine"
                 };
             }
@@ -1234,7 +1360,8 @@ namespace DaxStudio.UI.ViewModels
                 {
                     EngineType.StorageEngine => new SolidColorBrush(Color.FromRgb(95, 142, 214)),  // Blue (#5F8ED6)
                     EngineType.FormulaEngine => new SolidColorBrush(Color.FromRgb(254, 187, 76)), // Orange (#FEBB4C)
-                    _ => new SolidColorBrush(Color.FromRgb(158, 158, 158))                         // Gray
+                    EngineType.DirectQuery => new SolidColorBrush(Color.FromRgb(100, 100, 100)),  // Dark Grey (#646464)
+                    _ => new SolidColorBrush(Color.FromRgb(158, 158, 158))                         // Light Gray
                 };
             }
         }
@@ -1250,6 +1377,12 @@ namespace DaxStudio.UI.ViewModels
         /// Dark orange with 7:1+ contrast ratio.
         /// </summary>
         public static Brush FormulaEngineTextBrush => new SolidColorBrush(Color.FromRgb(154, 52, 18));  // #9A3412
+
+        /// <summary>
+        /// WCAG AAA compliant text color for DirectQuery values on grey background (#F3F2F1).
+        /// Dark grey with 7:1+ contrast ratio.
+        /// </summary>
+        public static Brush DirectQueryTextBrush => new SolidColorBrush(Color.FromRgb(55, 55, 55));  // #373737
 
         /// <summary>
         /// Engine badge foreground (text) color.
@@ -1298,6 +1431,7 @@ namespace DaxStudio.UI.ViewModels
         {
             EngineType.StorageEngine => "Storage Engine (SE)",
             EngineType.FormulaEngine => "Formula Engine (FE)",
+            EngineType.DirectQuery => "DirectQuery (DQ)",
             _ => "Unknown"
         };
 
@@ -1696,6 +1830,26 @@ namespace DaxStudio.UI.ViewModels
         /// Whether this node has cache column info for display.
         /// </summary>
         public bool HasCacheColumnInfo => !string.IsNullOrEmpty(CacheColumnInfo);
+
+        /// <summary>
+        /// Column info for DirectQueryResult nodes, extracted from Fields(...) pattern.
+        /// </summary>
+        public string DirectQueryFieldsInfo { get; set; }
+
+        /// <summary>
+        /// Whether this node has DirectQuery fields info for display.
+        /// </summary>
+        public bool HasDirectQueryFieldsInfo => !string.IsNullOrEmpty(DirectQueryFieldsInfo);
+
+        /// <summary>
+        /// Column info extracted from DependOnCols(...) pattern for Multiply and other operators.
+        /// </summary>
+        public string DependOnColsInfo { get; set; }
+
+        /// <summary>
+        /// Whether this node has DependOnCols info for display.
+        /// </summary>
+        public bool HasDependOnColsInfo => !string.IsNullOrEmpty(DependOnColsInfo);
 
         /// <summary>
         /// Type coercion info when a Variant->* node was folded into this node.
@@ -2189,9 +2343,19 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Fifth pass: Extract single-column info for Scan_Vertipaq nodes
+            // Fifth pass: Extract column info for Scan_Vertipaq, DirectQueryResult, and other operators
             var scanColumnInfos = new Dictionary<int, string>();
-            var requiredColsPattern = new Regex(@"RequiredCols\(\d+\)\(('[^']+'\[[^\]]+\])\)", RegexOptions.Compiled);
+            var directQueryFieldsInfos = new Dictionary<int, string>();
+            var dependOnColsInfos = new Dictionary<int, string>();
+            // Match RequiredCols with one or more column indices and one or more column references
+            // e.g., RequiredCols(4, 7)('Sales SalesOrderDetail'[OrderQty], 'Sales SalesOrderDetail'[UnitPrice])
+            var requiredColsPattern = new Regex(@"RequiredCols\([\d,\s]+\)\(('[^']+'\[[^\]]+\](?:,\s*'[^']+'\[[^\]]+\])*)\)", RegexOptions.Compiled);
+            // Match Fields(...) for DirectQueryResult nodes
+            // e.g., Fields('Sales SalesOrderDetail'[SalesOrderID]) or Fields() for empty
+            var fieldsPattern = new Regex(@"Fields\(([^)]*)\)", RegexOptions.Compiled);
+            // Match DependOnCols(...) for Multiply and other operators
+            // e.g., DependOnCols(56, 58)('Sales'[Quantity], 'Sales'[Net Price])
+            var dependOnColsPattern = new Regex(@"DependOnCols\([\d,\s]+\)\(('[^']+'\[[^\]]+\](?:,\s*'[^']+'\[[^\]]+\])*)\)", RegexOptions.Compiled);
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -2200,13 +2364,75 @@ namespace DaxStudio.UI.ViewModels
                 var opName = GetOperatorNameFromString(node.Operation);
                 if (opName == "Scan_Vertipaq")
                 {
-                    // Extract column from RequiredCols(N)('Table'[Column])
+                    // Extract columns from RequiredCols(N, M, ...)('Table'[Col1], 'Table'[Col2], ...)
                     var match = requiredColsPattern.Match(node.Operation ?? "");
                     if (match.Success)
                     {
-                        var column = match.Groups[1].Value;
-                        scanColumnInfos[node.NodeId] = column;
-                        Log.Debug(">>> BuildTree: Extracted scan column {Column} for node {NodeId}", column, node.NodeId);
+                        var columnsStr = match.Groups[1].Value;
+                        // Format nicely: extract just column names for display
+                        var columnMatches = Regex.Matches(columnsStr, @"'([^']+)'\[([^\]]+)\]");
+                        if (columnMatches.Count == 1)
+                        {
+                            // Single column: show full reference
+                            scanColumnInfos[node.NodeId] = columnsStr;
+                        }
+                        else if (columnMatches.Count > 1)
+                        {
+                            // Multiple columns: show abbreviated format
+                            var tableName = columnMatches[0].Groups[1].Value;
+                            var colNames = columnMatches.Cast<Match>().Select(m => $"[{m.Groups[2].Value}]");
+                            scanColumnInfos[node.NodeId] = $"'{tableName}': {string.Join(", ", colNames)}";
+                        }
+                        Log.Debug(">>> BuildTree: Extracted scan column(s) {Column} for node {NodeId}", scanColumnInfos.ContainsKey(node.NodeId) ? scanColumnInfos[node.NodeId] : "(none)", node.NodeId);
+                    }
+                }
+                else if (opName == "DirectQueryResult")
+                {
+                    // Extract columns from Fields('Table'[Col1], 'Table'[Col2], ...)
+                    var match = fieldsPattern.Match(node.Operation ?? "");
+                    if (match.Success && !string.IsNullOrWhiteSpace(match.Groups[1].Value))
+                    {
+                        var columnsStr = match.Groups[1].Value;
+                        // Format nicely: extract just column names for display
+                        var columnMatches = Regex.Matches(columnsStr, @"'([^']+)'\[([^\]]+)\]");
+                        if (columnMatches.Count == 1)
+                        {
+                            // Single column: show full reference
+                            directQueryFieldsInfos[node.NodeId] = columnsStr;
+                        }
+                        else if (columnMatches.Count > 1)
+                        {
+                            // Multiple columns: show abbreviated format
+                            var tableName = columnMatches[0].Groups[1].Value;
+                            var colNames = columnMatches.Cast<Match>().Select(m => $"[{m.Groups[2].Value}]");
+                            directQueryFieldsInfos[node.NodeId] = $"'{tableName}': {string.Join(", ", colNames)}";
+                        }
+                        Log.Debug(">>> BuildTree: Extracted DirectQuery fields {Fields} for node {NodeId}", directQueryFieldsInfos.ContainsKey(node.NodeId) ? directQueryFieldsInfos[node.NodeId] : "(none)", node.NodeId);
+                    }
+                }
+
+                // Extract DependOnCols for Multiply and other arithmetic operators
+                if (opName == "Multiply" || opName == "Divide" || opName == "Add" || opName == "Subtract")
+                {
+                    var match = dependOnColsPattern.Match(node.Operation ?? "");
+                    if (match.Success)
+                    {
+                        var columnsStr = match.Groups[1].Value;
+                        // Format nicely: extract just column names for display
+                        var columnMatches = Regex.Matches(columnsStr, @"'([^']+)'\[([^\]]+)\]");
+                        if (columnMatches.Count == 1)
+                        {
+                            // Single column: show full reference
+                            dependOnColsInfos[node.NodeId] = columnsStr;
+                        }
+                        else if (columnMatches.Count > 1)
+                        {
+                            // Multiple columns: show abbreviated format (e.g., "× 'Sales'[Quantity], [Net Price]")
+                            var tableName = columnMatches[0].Groups[1].Value;
+                            var colNames = columnMatches.Cast<Match>().Select(m => $"[{m.Groups[2].Value}]");
+                            dependOnColsInfos[node.NodeId] = $"'{tableName}': {string.Join(", ", colNames)}";
+                        }
+                        Log.Debug(">>> BuildTree: Extracted DependOnCols {Cols} for node {NodeId}", dependOnColsInfos.ContainsKey(node.NodeId) ? dependOnColsInfos[node.NodeId] : "(none)", node.NodeId);
                     }
                 }
             }
@@ -2492,6 +2718,10 @@ namespace DaxStudio.UI.ViewModels
                     if (foldedNodeIds.Contains(node.NodeId))
                         continue;
 
+                    // Never fold the root node - we need it to return a valid tree
+                    if (node.NodeId == plan.RootNode?.NodeId)
+                        continue;
+
                     var opName = GetOperatorNameFromString(node.Operation);
                     if (!opName.StartsWith("Proxy", StringComparison.OrdinalIgnoreCase))
                         continue;
@@ -2568,6 +2798,22 @@ namespace DaxStudio.UI.ViewModels
                         vm.CacheColumnInfo = cacheColumn;
                         Log.Debug(">>> BuildTree: Set cache column on VM {NodeId}: {Column}",
                             node.NodeId, cacheColumn);
+                    }
+
+                    // Set DirectQuery fields info if available
+                    if (directQueryFieldsInfos.TryGetValue(node.NodeId, out var dqFields))
+                    {
+                        vm.DirectQueryFieldsInfo = dqFields;
+                        Log.Debug(">>> BuildTree: Set DirectQuery fields on VM {NodeId}: {Fields}",
+                            node.NodeId, dqFields);
+                    }
+
+                    // Set DependOnCols info if available
+                    if (dependOnColsInfos.TryGetValue(node.NodeId, out var depCols))
+                    {
+                        vm.DependOnColsInfo = depCols;
+                        Log.Debug(">>> BuildTree: Set DependOnCols on VM {NodeId}: {Cols}",
+                            node.NodeId, depCols);
                     }
 
                     // Set nested spool depth if available

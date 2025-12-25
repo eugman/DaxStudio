@@ -563,7 +563,7 @@ namespace DaxStudio.Tests.VisualQueryPlan
         #region Color Scheme Tests - Background Brush
 
         [TestMethod]
-        public void BackgroundBrush_StorageEngine_ReturnsLightGreenTint()
+        public void BackgroundBrush_StorageEngine_ReturnsLightBlueTint()
         {
             // Arrange
             var enrichedNode = new EnrichedPlanNode
@@ -577,15 +577,15 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var color = node.BackgroundBrush as System.Windows.Media.SolidColorBrush;
 
-            // Assert - Very light green tint (245, 250, 245)
+            // Assert - Very light blue tint (240, 247, 255) - matches Server Timings
             Assert.IsNotNull(color);
-            Assert.AreEqual(245, color.Color.R);
-            Assert.AreEqual(250, color.Color.G);
-            Assert.AreEqual(245, color.Color.B);
+            Assert.AreEqual(240, color.Color.R);
+            Assert.AreEqual(247, color.Color.G);
+            Assert.AreEqual(255, color.Color.B);
         }
 
         [TestMethod]
-        public void BackgroundBrush_FormulaEngine_ReturnsLightPurpleTint()
+        public void BackgroundBrush_FormulaEngine_ReturnsLightOrangeTint()
         {
             // Arrange
             var enrichedNode = new EnrichedPlanNode
@@ -599,11 +599,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var color = node.BackgroundBrush as System.Windows.Media.SolidColorBrush;
 
-            // Assert - Very light purple tint (250, 248, 252)
+            // Assert - Very light orange tint (255, 250, 240) - matches Server Timings
             Assert.IsNotNull(color);
-            Assert.AreEqual(250, color.Color.R);
-            Assert.AreEqual(248, color.Color.G);
-            Assert.AreEqual(252, color.Color.B);
+            Assert.AreEqual(255, color.Color.R);
+            Assert.AreEqual(250, color.Color.G);
+            Assert.AreEqual(240, color.Color.B);
         }
 
         [TestMethod]
@@ -629,9 +629,10 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
-        public void BackgroundBrush_WithErrorIssue_ReturnsLightRed()
+        public void BackgroundBrush_WithErrorIssue_UsesEngineTypeColor()
         {
-            // Arrange
+            // Arrange - Background color is based on engine type, not issues
+            // Issues are indicated by the warning emoji and color-coded row counts
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
@@ -650,17 +651,17 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var color = node.BackgroundBrush as System.Windows.Media.SolidColorBrush;
 
-            // Assert - Very light red (255, 235, 235)
+            // Assert - Still uses StorageEngine color (240, 247, 255)
             Assert.IsNotNull(color);
-            Assert.AreEqual(255, color.Color.R);
-            Assert.AreEqual(235, color.Color.G);
-            Assert.AreEqual(235, color.Color.B);
+            Assert.AreEqual(240, color.Color.R);
+            Assert.AreEqual(247, color.Color.G);
+            Assert.AreEqual(255, color.Color.B);
         }
 
         [TestMethod]
-        public void BackgroundBrush_WithWarningIssue_ReturnsLightOrange()
+        public void BackgroundBrush_WithWarningIssue_UsesEngineTypeColor()
         {
-            // Arrange
+            // Arrange - Background color is based on engine type, not issues
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
@@ -679,11 +680,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var color = node.BackgroundBrush as System.Windows.Media.SolidColorBrush;
 
-            // Assert - Very light orange (255, 245, 230)
+            // Assert - Still uses StorageEngine color (240, 247, 255)
             Assert.IsNotNull(color);
-            Assert.AreEqual(255, color.Color.R);
-            Assert.AreEqual(245, color.Color.G);
-            Assert.AreEqual(230, color.Color.B);
+            Assert.AreEqual(240, color.Color.R);
+            Assert.AreEqual(247, color.Color.G);
+            Assert.AreEqual(255, color.Color.B);
         }
 
         #endregion
@@ -691,7 +692,7 @@ namespace DaxStudio.Tests.VisualQueryPlan
         #region Color Scheme Tests - Border Brush
 
         [TestMethod]
-        public void BorderBrush_StorageEngine_NotSelected_ReturnsLightGreenGray()
+        public void BorderBrush_StorageEngine_NotSelected_ReturnsLightBlueGray()
         {
             // Arrange
             var enrichedNode = new EnrichedPlanNode
@@ -706,15 +707,15 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var color = node.BorderBrush as System.Windows.Media.SolidColorBrush;
 
-            // Assert - Light green-gray (180, 200, 180)
+            // Assert - Light blue-gray (180, 200, 220) - matches Server Timings
             Assert.IsNotNull(color);
             Assert.AreEqual(180, color.Color.R);
             Assert.AreEqual(200, color.Color.G);
-            Assert.AreEqual(180, color.Color.B);
+            Assert.AreEqual(220, color.Color.B);
         }
 
         [TestMethod]
-        public void BorderBrush_FormulaEngine_NotSelected_ReturnsLightPurpleGray()
+        public void BorderBrush_FormulaEngine_NotSelected_ReturnsLightOrangeGray()
         {
             // Arrange
             var enrichedNode = new EnrichedPlanNode
@@ -729,11 +730,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var color = node.BorderBrush as System.Windows.Media.SolidColorBrush;
 
-            // Assert - Light purple-gray (200, 180, 200)
+            // Assert - Light orange-gray (220, 200, 180) - matches Server Timings
             Assert.IsNotNull(color);
-            Assert.AreEqual(200, color.Color.R);
-            Assert.AreEqual(180, color.Color.G);
-            Assert.AreEqual(200, color.Color.B);
+            Assert.AreEqual(220, color.Color.R);
+            Assert.AreEqual(200, color.Color.G);
+            Assert.AreEqual(180, color.Color.B);
         }
 
         [TestMethod]
@@ -2540,9 +2541,10 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
-        public void BuildTree_NestedSpoolIterators_DifferentRecords_DoesNotFold()
+        public void BuildTree_NestedSpoolIterators_DifferentRecords_FoldsWithRowRange()
         {
             // Arrange - Two Spool_Iterator nodes with different #Records
+            // Current behavior: fold and track row range (1-11)
             var plan = new EnrichedQueryPlan
             {
                 AllNodes = new List<EnrichedPlanNode>
@@ -2550,40 +2552,49 @@ namespace DaxStudio.Tests.VisualQueryPlan
                     new EnrichedPlanNode
                     {
                         NodeId = 1,
+                        Level = 0,
                         Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=0 #ValueCols=3",
                         Parent = null
                     },
                     new EnrichedPlanNode
                     {
                         NodeId = 2,
+                        Level = 1,
                         Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=ScalarVarProxy IterCols(0)('Product'[Brand]) #Records=11 #KeyCols=1 #ValueCols=3",
                         Parent = null // Will be set below
                     },
                     new EnrichedPlanNode
                     {
                         NodeId = 3,
+                        Level = 2,
                         Operation = "Cache: IterPhyOp #FieldCols=1 #ValueCols=3",
                         Parent = null // Will be set below
                     }
                 }
             };
+            plan.AllNodes[0].Children.Add(plan.AllNodes[1]);
             plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[1].Children.Add(plan.AllNodes[2]);
             plan.AllNodes[2].Parent = plan.AllNodes[1];
             plan.RootNode = plan.AllNodes[0];
 
             // Act
             var root = PlanNodeViewModel.BuildTree(plan);
 
-            // Assert - Should NOT fold (different #Records: 1 vs 11)
+            // Assert - Should fold with row range tracking (min=1, max=11)
             Assert.IsNotNull(root);
             Assert.AreEqual(1, root.NodeId);
-            Assert.AreEqual(1, root.NestedSpoolDepth, "Should have depth 1 (no nesting)");
-            Assert.IsFalse(root.IsNestedSpoolChain, "Should NOT be marked as nested chain");
-            Assert.IsFalse(root.DisplayName.Contains("×"), "DisplayName should NOT show depth multiplier");
+            Assert.AreEqual(2, root.NestedSpoolDepth, "Should have depth 2 (folded nested chain)");
+            Assert.IsTrue(root.IsNestedSpoolChain, "Should be marked as nested chain");
+            Assert.IsTrue(root.DisplayName.Contains("×2"), "DisplayName should show depth ×2");
 
-            // Should have the second Spool_Iterator as child
+            // Row range should be tracked
+            Assert.AreEqual(1, root.SpoolRowRangeMin, "Min records should be 1");
+            Assert.AreEqual(11, root.SpoolRowRangeMax, "Max records should be 11");
+
+            // Child should be Cache (second Spool_Iterator was folded)
             Assert.AreEqual(1, root.Children.Count);
-            Assert.AreEqual(2, root.Children[0].NodeId, "Child should be node 2 (second Spool_Iterator)");
+            Assert.AreEqual("Cache", root.Children[0].OperatorName, "Child should be Cache node");
         }
 
         [TestMethod]

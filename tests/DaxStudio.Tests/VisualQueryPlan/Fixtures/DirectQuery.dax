@@ -1,0 +1,18 @@
+﻿// DAX Query
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			ROLLUPADDISSUBTOTAL('Sales SalesOrderHeader'[CustomerID], "IsGrandTotalRowTotal"),
+			"Total", 'Sales SalesOrderDetail'[Total]
+		)
+
+	VAR __DS0PrimaryWindowed = 
+		TOPN(502, __DS0Core, [IsGrandTotalRowTotal], 0, 'Sales SalesOrderHeader'[CustomerID], 1)
+
+EVALUATE
+	__DS0PrimaryWindowed
+
+ORDER BY
+	[IsGrandTotalRowTotal] DESC, 'Sales SalesOrderHeader'[CustomerID]
+
+

@@ -368,6 +368,111 @@ namespace DaxStudio.Tests.VisualQueryPlan
 
         #endregion
 
+        #region Constant Value Extraction Tests
+
+        [TestMethod]
+        public void Constant_WithDominantValue_DisplaysValue()
+        {
+            // Arrange - Constant with DominantValue
+            var node = CreateNode("Constant: LookupPhyOp LogOp=Constant Currency DominantValue=123.45");
+
+            // Act & Assert
+            Assert.AreEqual("Constant", node.OperatorName);
+            Assert.AreEqual("123.45", node.DominantValue);
+        }
+
+        [TestMethod]
+        public void Constant_WithTypeValue_DisplaysValue()
+        {
+            // Arrange - Constant with type followed by value (from DirectQuery fixture)
+            var node = CreateNode("Constant: LookupPhyOp LogOp=Constant Integer 502");
+
+            // Act & Assert
+            Assert.AreEqual("Constant", node.OperatorName);
+            // DisplayDetail should show the value
+            Assert.AreEqual("502", node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void Constant_WithCurrencyValue_DisplaysValue()
+        {
+            // Arrange - Currency constant
+            var node = CreateNode("Constant: LookupPhyOp LogOp=Constant Currency 99.99");
+
+            // Act & Assert
+            Assert.AreEqual("99.99", node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void Constant_WithBooleanTrue_DisplaysTrue()
+        {
+            // Arrange - Boolean constant
+            var node = CreateNode("Constant: ScaLogOp DominantValue=true");
+
+            // Act & Assert
+            Assert.AreEqual("TRUE()", node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void Constant_WithBooleanFalse_DisplaysFalse()
+        {
+            // Arrange
+            var node = CreateNode("Constant: ScaLogOp DominantValue=false");
+
+            // Act & Assert
+            Assert.AreEqual("FALSE()", node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void Constant_WithBlankValue_DisplaysBlank()
+        {
+            // Arrange
+            var node = CreateNode("Constant: ScaLogOp DominantValue=BLANK");
+
+            // Act & Assert
+            Assert.AreEqual("BLANK()", node.DisplayDetail);
+        }
+
+        #endregion
+
+        #region MeasureReference Extraction Tests
+
+        [TestMethod]
+        public void SumVertipaq_WithMeasureRef_DisplaysMeasure()
+        {
+            // Arrange - Sum_Vertipaq with MeasureRef pattern
+            var node = CreateNode("Sum_Vertipaq: LogOp=Sum_Vertipaq MeasureRef=[Total Sales] DependOnCols()()");
+
+            // Act & Assert
+            Assert.AreEqual("[Total Sales]", node.MeasureReference);
+            Assert.IsTrue(node.HasMeasureReference);
+        }
+
+        [TestMethod]
+        public void SumVertipaq_WithLogOpMeasureName_DisplaysMeasure()
+        {
+            // Arrange - Sum_Vertipaq with measure name after LogOp=
+            var node = CreateNode("Sum_Vertipaq: LogOp=Sum_Vertipaq TotalSales DependOnCols()()");
+
+            // Act & Assert
+            Assert.AreEqual("[TotalSales]", node.MeasureReference);
+            Assert.IsTrue(node.HasMeasureReference);
+        }
+
+        [TestMethod]
+        public void AggregationNode_DisplaysMeasureRefInDetail()
+        {
+            // Arrange - Sum_Vertipaq should show MeasureRef in DisplayDetail
+            var node = CreateNode("Sum_Vertipaq: LogOp=Sum_Vertipaq MeasureRef=[Margin Pct]");
+
+            // Act & Assert
+            Assert.AreEqual("[Margin Pct]", node.MeasureReference);
+            // DisplayDetail shows MeasureReference for aggregation operators
+            Assert.AreEqual("[Margin Pct]", node.DisplayDetail);
+        }
+
+        #endregion
+
         #region Complex Operation String Tests
 
         [TestMethod]
@@ -410,6 +515,85 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act & Assert
             Assert.IsTrue(node.HasDependOnCols);
             Assert.AreEqual("Currency", node.DataType);
+        }
+
+        #endregion
+
+        #region ColValue Display Tests
+
+        [TestMethod]
+        public void ColValue_WithAngleBrackets_ShowsColumnInDisplayDetail()
+        {
+            // Arrange - ColValue<'Table'[Column]> format from physical plan
+            var node = CreateNode("ColValue<'Sales SalesOrderHeader'[CustomerID]>: LookupPhyOp LogOp=ColValue");
+
+            // Act & Assert
+            Assert.IsTrue(node.OperatorName.StartsWith("ColValue"));
+            Assert.AreEqual("[CustomerID]", node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void ColValue_WithEmptyTableName_ShowsColumnInDisplayDetail()
+        {
+            // Arrange - ColValue<''[Column]> format for calculated columns
+            var node = CreateNode("ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue");
+
+            // Act & Assert
+            Assert.AreEqual("[IsGrandTotalRowTotal]", node.DisplayDetail);
+        }
+
+        #endregion
+
+        #region Join/Set Operator Display Tests
+
+        [TestMethod]
+        public void Union_WithIterCols_ShowsColumnsInDisplayDetail()
+        {
+            // Arrange - Union with IterCols
+            var node = CreateNode("Union: IterPhyOp LogOp=Union IterCols(0, 1, 2, 3)('Sales'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[])");
+
+            // Act & Assert
+            Assert.AreEqual("Union", node.OperatorName);
+            Assert.IsTrue(node.HasIterCols);
+            // DisplayDetail should show abbreviated column list
+            Assert.IsNotNull(node.DisplayDetail);
+            Assert.IsTrue(node.DisplayDetail.Contains("[CustomerID]") || node.DisplayDetail.Contains("Sales"));
+        }
+
+        [TestMethod]
+        public void GroupSemijoin_WithIterCols_ShowsColumnsInDisplayDetail()
+        {
+            // Arrange - GroupSemijoin with IterCols
+            var node = CreateNode("GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2)('Sales'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total])");
+
+            // Act & Assert
+            Assert.AreEqual("GroupSemijoin", node.OperatorName);
+            Assert.IsTrue(node.HasIterCols);
+            Assert.IsNotNull(node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void CrossApply_WithIterCols_ShowsColumnsInDisplayDetail()
+        {
+            // Arrange
+            var node = CreateNode("CrossApply: IterPhyOp LogOp=Sum_Vertipaq IterCols(0)('Sales'[CustomerID])");
+
+            // Act & Assert
+            Assert.AreEqual("CrossApply", node.OperatorName);
+            Assert.IsTrue(node.HasIterCols);
+            Assert.IsNotNull(node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void TreatAs_WithIterCols_ShowsColumnsInDisplayDetail()
+        {
+            // Arrange
+            var node = CreateNode("TreatAs: IterPhyOp LogOp=TreatAs IterCols(0, 1)('Sales'[CustomerID], 'Sales'[SalesOrderID])");
+
+            // Act & Assert
+            Assert.AreEqual("TreatAs", node.OperatorName);
+            Assert.IsTrue(node.HasIterCols);
+            Assert.IsNotNull(node.DisplayDetail);
         }
 
         #endregion

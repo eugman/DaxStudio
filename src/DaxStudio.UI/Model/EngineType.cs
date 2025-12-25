@@ -18,6 +18,11 @@ namespace DaxStudio.UI.Model
         /// <summary>
         /// Formula Engine operation.
         /// </summary>
-        FormulaEngine
+        FormulaEngine,
+
+        /// <summary>
+        /// DirectQuery operation (queries sent to external data source).
+        /// </summary>
+        DirectQuery
     }
 }

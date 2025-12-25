@@ -359,7 +359,9 @@ namespace DaxStudio.UI.ViewModels
                 DaxStudioTraceEventClass.DAXQueryPlan,
                 DaxStudioTraceEventClass.QueryBegin,
                 DaxStudioTraceEventClass.QueryEnd,
-                DaxStudioTraceEventClass.VertiPaqSEQueryEnd  // For timing correlation
+                DaxStudioTraceEventClass.VertiPaqSEQueryEnd,       // For SE timing correlation
+                DaxStudioTraceEventClass.VertiPaqSEQueryCacheMatch, // For cache hit info
+                DaxStudioTraceEventClass.DirectQueryEnd             // For DirectQuery timing correlation
             };
         }
 
@@ -426,6 +428,47 @@ namespace DaxStudio.UI.ViewModels
                         NetParallelDuration = traceEvent.NetParallelDuration,
                         StartTime = traceEvent.StartTime,
                         EndTime = traceEvent.EndTime
+                    };
+                    ExtractEstimatedSizeFromQuery(seEvent);
+                    timingEvents.Add(seEvent);
+                }
+                else if (traceEvent.EventClass == DaxStudioTraceEventClass.VertiPaqSEQueryCacheMatch)
+                {
+                    // Cache match events - may have timing data for cache hits
+                    Log.Debug("{class} {method} Found SE cache match - Duration={Duration}, ObjectName={ObjectName}",
+                        nameof(VisualQueryPlanViewModel), nameof(ProcessResults), traceEvent.Duration, traceEvent.ObjectName);
+                    var seEvent = new TraceStorageEngineEvent
+                    {
+                        ObjectName = traceEvent.ObjectName,
+                        Query = traceEvent.TextData,
+                        TextData = traceEvent.TextData,
+                        Duration = traceEvent.Duration,
+                        CpuTime = traceEvent.CpuTime,
+                        Subclass = traceEvent.EventSubclass,
+                        NetParallelDuration = traceEvent.NetParallelDuration,
+                        StartTime = traceEvent.StartTime,
+                        EndTime = traceEvent.EndTime
+                    };
+                    ExtractEstimatedSizeFromQuery(seEvent);
+                    timingEvents.Add(seEvent);
+                }
+                else if (traceEvent.EventClass == DaxStudioTraceEventClass.DirectQueryEnd)
+                {
+                    // DirectQuery events - timing for queries sent to external data source
+                    Log.Debug("{class} {method} Found DirectQuery event - Duration={Duration}, ObjectName={ObjectName}",
+                        nameof(VisualQueryPlanViewModel), nameof(ProcessResults), traceEvent.Duration, traceEvent.ObjectName);
+                    var seEvent = new TraceStorageEngineEvent
+                    {
+                        ObjectName = traceEvent.ObjectName ?? "DirectQuery",
+                        Query = traceEvent.TextData,
+                        TextData = traceEvent.TextData,
+                        Duration = traceEvent.Duration,
+                        CpuTime = traceEvent.CpuTime,
+                        Subclass = traceEvent.EventSubclass,
+                        NetParallelDuration = traceEvent.NetParallelDuration,
+                        StartTime = traceEvent.StartTime,
+                        EndTime = traceEvent.EndTime,
+                        IsDirectQuery = true
                     };
                     ExtractEstimatedSizeFromQuery(seEvent);
                     timingEvents.Add(seEvent);
@@ -1098,7 +1141,8 @@ namespace DaxStudio.UI.ViewModels
             // Simple top-down tree layout with padding
             const double horizontalSpacing = 30;
             const double verticalSpacing = 60;
-            const double paddingLeft = 20;
+            const double paddingLeft = 150;   // Left margin matching bottom for scroll-and-zoom workflow
+            const double paddingRight = 150;  // Right margin matching bottom
             const double paddingTop = 20;
             const double paddingBottom = 150; // Extra bottom padding for scroll-and-zoom workflow
 
@@ -1123,7 +1167,7 @@ namespace DaxStudio.UI.ViewModels
             }
 
             // Add padding to the bounds
-            ActualContentWidth = maxX + paddingLeft;
+            ActualContentWidth = maxX + paddingRight;
             ActualContentHeight = maxY + paddingBottom;
         }
 
