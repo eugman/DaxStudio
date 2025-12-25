@@ -1865,6 +1865,37 @@ namespace DaxStudio.UI.ViewModels
             : null;
 
         /// <summary>
+        /// Stores operation text from all folded nodes (spool lookups, nested spools, proxies, etc.).
+        /// This is the unified list shown in the detail pane.
+        /// </summary>
+        public List<string> FoldedOperations { get; set; }
+
+        /// <summary>
+        /// Whether this node has folded operations to display.
+        /// </summary>
+        public bool HasFoldedOperations => FoldedOperations?.Count > 0;
+
+        /// <summary>
+        /// Adds an operation string to the folded operations list.
+        /// </summary>
+        public void AddFoldedOperation(string operation)
+        {
+            if (string.IsNullOrEmpty(operation)) return;
+            FoldedOperations ??= new List<string>();
+            FoldedOperations.Add(operation);
+        }
+
+        /// <summary>
+        /// Adds multiple operation strings to the folded operations list.
+        /// </summary>
+        public void AddFoldedOperations(IEnumerable<string> operations)
+        {
+            if (operations == null) return;
+            FoldedOperations ??= new List<string>();
+            FoldedOperations.AddRange(operations.Where(op => !string.IsNullOrEmpty(op)));
+        }
+
+        /// <summary>
         /// Column info for single-column Scan_Vertipaq nodes (e.g., "'Customer'[First Name]").
         /// </summary>
         public string ScanColumnInfo { get; set; }
@@ -2333,6 +2364,21 @@ namespace DaxStudio.UI.ViewModels
 
             // Fourth pass: Fold spool children into Spool_Iterator and SpoolLookup parents
             var spoolTypeInfos = new Dictionary<int, string>();
+            // Track all folded operations for display in detail pane
+            var foldedOperationsMap = new Dictionary<int, List<string>>();
+
+            // Helper to add a folded operation to a parent node
+            void AddFoldedOp(int parentId, string operation)
+            {
+                if (string.IsNullOrEmpty(operation)) return;
+                if (!foldedOperationsMap.TryGetValue(parentId, out var ops))
+                {
+                    ops = new List<string>();
+                    foldedOperationsMap[parentId] = ops;
+                }
+                ops.Add(operation);
+            }
+
             var iterColsPattern = new Regex(@"IterCols\(\d+\)\(('[^']+'\[[^\]]+\])\)", RegexOptions.Compiled);
             var lookupColsPattern = new Regex(@"LookupCols\(\d+\)\(('[^']+'\[[^\]]+\])\)", RegexOptions.Compiled);
             foreach (var node in plan.AllNodes)
@@ -2388,6 +2434,7 @@ namespace DaxStudio.UI.ViewModels
 
                             spoolTypeInfos[node.NodeId] = spoolInfo;
                             foldedNodeIds.Add(child.NodeId);
+                            AddFoldedOp(node.NodeId, child.Operation);
                             Log.Debug(">>> BuildTree: Folding spool child {ChildId} ({SpoolType}) into {ParentOp} {ParentId}, display: {SpoolInfo}",
                                 child.NodeId, childOpName, opName, node.NodeId, spoolInfo);
                             break; // Only fold first spool child
@@ -2509,6 +2556,7 @@ namespace DaxStudio.UI.ViewModels
                     if (string.Equals(node.Operation, child.Operation, StringComparison.Ordinal))
                     {
                         foldedNodeIds.Add(child.NodeId);
+                        AddFoldedOp(node.NodeId, child.Operation);
                         Log.Debug(">>> BuildTree: Folding identical child {ChildId} into parent {ParentId}: {Op}",
                             child.NodeId, node.NodeId, GetOperatorNameFromString(node.Operation));
                     }
@@ -2619,6 +2667,7 @@ namespace DaxStudio.UI.ViewModels
                             {
                                 // Fold child into parent (same or different #Records)
                                 foldedNodeIds.Add(child.NodeId);
+                                AddFoldedOp(node.NodeId, child.Operation);
 
                                 // Track the depth - inherit child's depth + 1
                                 var childDepth = nestedSpoolDepths.TryGetValue(child.NodeId, out var cd) ? cd : 1;
@@ -2689,6 +2738,7 @@ namespace DaxStudio.UI.ViewModels
 
                         // Store the type coercion info on the child so it can be displayed
                         typeCoercionInfos[child.NodeId] = opName;
+                        AddFoldedOp(child.NodeId, node.Operation);
 
                         Log.Debug(">>> BuildTree: Folded Variant node {VariantId} ({OpName}) down into child {ChildId}",
                             node.NodeId, opName, child.NodeId);
@@ -2734,6 +2784,7 @@ namespace DaxStudio.UI.ViewModels
 
                 // Fold the Spool_Iterator into SpoolLookup
                 foldedNodeIds.Add(child.NodeId);
+                AddFoldedOp(node.NodeId, child.Operation);
 
                 // Inherit child's existing row range if present (from 8th pass folding)
                 var childMin = childRecords;
@@ -2788,6 +2839,7 @@ namespace DaxStudio.UI.ViewModels
 
                     // Fold this Proxy into its child
                     foldedNodeIds.Add(node.NodeId);
+                    AddFoldedOp(child.NodeId, node.Operation);
 
                     // Transfer proxy operation info to child
                     if (!collapsedProxyInfos.ContainsKey(child.NodeId))
@@ -2900,6 +2952,14 @@ namespace DaxStudio.UI.ViewModels
                         vm.CollapsedProxyOperations = proxyOps;
                         Log.Debug(">>> BuildTree: Set collapsed proxy operations on VM {NodeId}: {Count} proxies",
                             node.NodeId, proxyOps.Count);
+                    }
+
+                    // Set folded operations for display in detail pane
+                    if (foldedOperationsMap.TryGetValue(node.NodeId, out var foldedOps))
+                    {
+                        vm.FoldedOperations = foldedOps;
+                        Log.Debug(">>> BuildTree: Set folded operations on VM {NodeId}: {Count} operations",
+                            node.NodeId, foldedOps.Count);
                     }
 
                     nodeMap[node.NodeId] = vm;

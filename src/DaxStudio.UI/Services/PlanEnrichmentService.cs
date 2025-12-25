@@ -299,11 +299,18 @@ namespace DaxStudio.UI.Services
             // Aggregate timing data from storage engine events
             long totalSeDuration = 0;
             long totalSeCpu = 0;
+            long totalDqDuration = 0;
             int cacheHits = 0;
 
-            // Collect ALL Storage Engine and DirectQuery nodes (not just one per table)
-            // We'll match by column overlap, so multiple nodes for the same table is fine
-            var allScanNodes = plan.AllNodes.Where(n => n.Operation != null &&
+            // Separate Storage Engine and DirectQuery events
+            var seEvents = timingEvents.Where(e => !e.IsDirectQuery).ToList();
+            var dqEvents = timingEvents.Where(e => e.IsDirectQuery).ToList();
+
+            Log.Information(">>> PlanEnrichmentService: {SeCount} SE events, {DqCount} DirectQuery events",
+                seEvents.Count, dqEvents.Count);
+
+            // Collect ALL Storage Engine nodes (Vertipaq operators)
+            var seNodes = plan.AllNodes.Where(n => n.Operation != null &&
                 (n.Operation.Contains("Scan_Vertipaq") ||
                  n.Operation.Contains("Sum_Vertipaq") ||
                  n.Operation.Contains("Count_Vertipaq") ||
@@ -313,33 +320,40 @@ namespace DaxStudio.UI.Services
                  n.Operation.Contains("GroupBy_Vertipaq") ||
                  n.Operation.Contains("Filter_Vertipaq") ||
                  n.Operation.Contains("DistinctCount_Vertipaq") ||
-                 n.Operation.Contains("_Vertipaq") ||
-                 n.Operation.Contains("DirectQueryResult"))).ToList();
+                 n.Operation.Contains("_Vertipaq"))).ToList();
 
-            // Pre-extract columns from each scan node's RequiredCols
-            var scanNodeColumns = new Dictionary<EnrichedPlanNode, HashSet<string>>();
-            foreach (var node in allScanNodes)
+            // Collect DirectQueryResult nodes separately
+            var dqNodes = plan.AllNodes.Where(n => n.Operation != null &&
+                n.Operation.Contains("DirectQueryResult")).ToList();
+
+            // Pre-extract columns from SE nodes (RequiredCols pattern)
+            var seNodeColumns = new Dictionary<EnrichedPlanNode, HashSet<string>>();
+            foreach (var node in seNodes)
             {
                 var columns = ExtractColumnsFromRequiredCols(node.Operation);
-                scanNodeColumns[node] = columns;
-                Log.Debug(">>> PlanEnrichmentService: Node {NodeId} has columns: [{Columns}]",
+                seNodeColumns[node] = columns;
+                Log.Debug(">>> PlanEnrichmentService: SE Node {NodeId} has columns: [{Columns}]",
                     node.NodeId, string.Join(", ", columns));
             }
 
-            Log.Information(">>> PlanEnrichmentService: Collected {Count} scan nodes for column-based matching", allScanNodes.Count);
+            // Pre-extract columns from DQ nodes (Fields pattern)
+            var dqNodeColumns = new Dictionary<EnrichedPlanNode, HashSet<string>>();
+            foreach (var node in dqNodes)
+            {
+                var columns = ExtractColumnsFromDirectQueryResult(node.Operation);
+                dqNodeColumns[node] = columns;
+                Log.Debug(">>> PlanEnrichmentService: DQ Node {NodeId} has columns: [{Columns}]",
+                    node.NodeId, string.Join(", ", columns));
+            }
 
-            // Process ALL timing events
-            var userEvents = timingEvents.Where(e => !e.IsInternalEvent).ToList();
-            var internalEvents = timingEvents.Where(e => e.IsInternalEvent).ToList();
-
-            Log.Information(">>> PlanEnrichmentService: {UserCount} user events, {InternalCount} internal events",
-                userEvents.Count, internalEvents.Count);
+            Log.Information(">>> PlanEnrichmentService: Collected {SeCount} SE nodes, {DqCount} DQ nodes for correlation",
+                seNodes.Count, dqNodes.Count);
 
             // Track which nodes have been matched to avoid double-assignment
             var matchedNodes = new HashSet<int>();
 
-            // Match timing events to scan nodes by column overlap
-            foreach (var evt in timingEvents)
+            // === CORRELATE STORAGE ENGINE (xmSQL) EVENTS ===
+            foreach (var evt in seEvents)
             {
                 if (evt.Duration.HasValue) totalSeDuration += evt.Duration.Value;
                 if (evt.CpuTime.HasValue) totalSeCpu += evt.CpuTime.Value;
@@ -351,30 +365,27 @@ namespace DaxStudio.UI.Services
                 var xmSqlColumns = ExtractColumnsFromXmSql(xmSql);
                 var xmSqlTable = ExtractTableNameFromXmSql(xmSql);
 
-                Log.Debug(">>> PlanEnrichmentService: Event xmSQL table='{Table}', columns=[{Columns}]",
+                Log.Debug(">>> PlanEnrichmentService: SE Event xmSQL table='{Table}', columns=[{Columns}]",
                     xmSqlTable ?? "(null)", string.Join(", ", xmSqlColumns));
 
-                // Find the best matching node by column overlap
+                // Find the best matching SE node by column overlap
                 EnrichedPlanNode bestMatch = null;
                 int bestOverlap = 0;
 
-                foreach (var node in allScanNodes)
+                foreach (var node in seNodes)
                 {
-                    // Skip if already matched
                     if (matchedNodes.Contains(node.NodeId))
                         continue;
 
-                    var nodeColumns = scanNodeColumns[node];
+                    var nodeColumns = seNodeColumns[node];
                     var nodeTable = ExtractTableNameFromOperation(node.Operation);
 
-                    // Calculate column overlap (ignoring table qualification and GUID suffixes)
                     int overlap = CalculateColumnOverlap(nodeColumns, xmSqlColumns);
 
-                    // Bonus for matching table name
                     if (!string.IsNullOrEmpty(xmSqlTable) && !string.IsNullOrEmpty(nodeTable) &&
                         string.Equals(xmSqlTable, nodeTable, StringComparison.OrdinalIgnoreCase))
                     {
-                        overlap += 10; // Table match bonus
+                        overlap += 10;
                     }
 
                     if (overlap > bestOverlap)
@@ -387,53 +398,166 @@ namespace DaxStudio.UI.Services
                 if (bestMatch != null && bestOverlap > 0)
                 {
                     matchedNodes.Add(bestMatch.NodeId);
-                    Log.Information(">>> PlanEnrichmentService: MATCHED event to node {NodeId} (overlap={Overlap}, table='{Table}', IsDirectQuery={IsDirectQuery})",
-                        bestMatch.NodeId, bestOverlap, ExtractTableNameFromOperation(bestMatch.Operation), evt.IsDirectQuery);
+                    ApplyTimingToNode(bestMatch, evt, xmSqlTable, isCacheHit, EngineType.StorageEngine);
+                    Log.Information(">>> PlanEnrichmentService: MATCHED SE event to node {NodeId} (overlap={Overlap})",
+                        bestMatch.NodeId, bestOverlap);
+                }
+            }
 
-                    // Populate xmSQL/SQL data
-                    bestMatch.XmSql = evt.TextData ?? evt.Query;
-                    bestMatch.ResolvedXmSql = evt.Query ?? evt.TextData;
-                    bestMatch.DurationMs = evt.Duration;
-                    bestMatch.CpuTimeMs = evt.CpuTime;
-                    bestMatch.EstimatedRows = evt.EstimatedRows;
-                    bestMatch.EstimatedKBytes = evt.EstimatedKBytes;
-                    bestMatch.IsCacheHit = isCacheHit;
-                    bestMatch.EngineType = evt.IsDirectQuery ? EngineType.DirectQuery : EngineType.StorageEngine;
-                    bestMatch.ObjectName = xmSqlTable;
+            // === CORRELATE DIRECTQUERY (T-SQL) EVENTS ===
+            foreach (var evt in dqEvents)
+            {
+                if (evt.Duration.HasValue) totalDqDuration += evt.Duration.Value;
 
-                    // RECONCILE ROW COUNTS
-                    if ((!bestMatch.Records.HasValue || bestMatch.Records == 0) && evt.EstimatedRows.HasValue && evt.EstimatedRows > 0)
+                var tSql = evt.Query ?? evt.TextData;
+                var tSqlColumns = ExtractColumnsFromTSql(tSql);
+                var tSqlTable = ExtractTableNameFromTSql(tSql);
+
+                Log.Debug(">>> PlanEnrichmentService: DQ Event T-SQL table='{Table}', columns=[{Columns}]",
+                    tSqlTable ?? "(null)", string.Join(", ", tSqlColumns));
+
+                // Find the best matching DirectQueryResult node
+                EnrichedPlanNode bestMatch = null;
+                int bestOverlap = 0;
+
+                foreach (var node in dqNodes)
+                {
+                    if (matchedNodes.Contains(node.NodeId))
+                        continue;
+
+                    var nodeColumns = dqNodeColumns[node];
+                    var nodeTable = ExtractTableNameFromDirectQueryResult(node.Operation);
+
+                    // Calculate overlap - for DQ, column names should match directly
+                    int overlap = CalculateColumnOverlap(nodeColumns, tSqlColumns);
+
+                    // Table name bonus - compare normalized names
+                    if (!string.IsNullOrEmpty(tSqlTable) && !string.IsNullOrEmpty(nodeTable) &&
+                        NormalizeTableName(tSqlTable).Equals(NormalizeTableName(nodeTable), StringComparison.OrdinalIgnoreCase))
                     {
-                        bestMatch.Records = evt.EstimatedRows;
-                        bestMatch.RecordsSource = "ServerTiming";
+                        overlap += 10;
                     }
 
-                    // CALCULATE PARALLELISM
-                    if (evt.Duration.HasValue && evt.NetParallelDuration.HasValue && evt.NetParallelDuration > 0)
+                    if (overlap > bestOverlap)
                     {
-                        bestMatch.NetParallelDurationMs = evt.NetParallelDuration;
-                        bestMatch.Parallelism = (int)Math.Max(1, Math.Round((double)evt.Duration.Value / evt.NetParallelDuration.Value));
+                        bestOverlap = overlap;
+                        bestMatch = node;
                     }
+                }
+
+                if (bestMatch != null && bestOverlap > 0)
+                {
+                    matchedNodes.Add(bestMatch.NodeId);
+                    ApplyTimingToNode(bestMatch, evt, tSqlTable, false, EngineType.DirectQuery);
+                    Log.Information(">>> PlanEnrichmentService: MATCHED DQ event to node {NodeId} (overlap={Overlap}, table='{Table}')",
+                        bestMatch.NodeId, bestOverlap, tSqlTable);
                 }
                 else
                 {
-                    Log.Debug(">>> PlanEnrichmentService: No node match for event, table='{Table}', columns=[{Columns}]",
-                        xmSqlTable ?? "(null)", string.Join(", ", xmSqlColumns.Take(3)));
+                    Log.Debug(">>> PlanEnrichmentService: No DQ node match for T-SQL, table='{Table}', columns=[{Columns}]",
+                        tSqlTable ?? "(null)", string.Join(", ", tSqlColumns.Take(3)));
                 }
             }
 
             plan.StorageEngineDurationMs = totalSeDuration;
             plan.StorageEngineCpuMs = totalSeCpu;
+            plan.DirectQueryDurationMs = totalDqDuration;
             plan.CacheHits = cacheHits;
-            plan.StorageEngineQueryCount = userEvents.Count + internalEvents.Count;
+            plan.StorageEngineQueryCount = seEvents.Count; // Count all SE events (user + internal)
+            plan.DirectQueryCount = dqEvents.Count;
 
             if (plan.TotalDurationMs > 0)
             {
-                plan.FormulaEngineDurationMs = Math.Max(0, plan.TotalDurationMs - totalSeDuration);
+                plan.FormulaEngineDurationMs = Math.Max(0, plan.TotalDurationMs - totalSeDuration - totalDqDuration);
             }
 
-            Log.Information(">>> PlanEnrichmentService: Correlation complete. SE duration={SeDuration}ms, SE queries={SeQueryCount}, Cache hits={CacheHits}, Matched nodes={MatchedCount}",
-                totalSeDuration, plan.StorageEngineQueryCount, cacheHits, matchedNodes.Count);
+            Log.Information(">>> PlanEnrichmentService: Correlation complete. SE={SeDuration}ms, DQ={DqDuration}ms, Cache hits={CacheHits}, Matched={MatchedCount}",
+                totalSeDuration, totalDqDuration, cacheHits, matchedNodes.Count);
+        }
+
+        /// <summary>
+        /// Applies timing data from an event to a plan node.
+        /// </summary>
+        private void ApplyTimingToNode(EnrichedPlanNode node, TraceStorageEngineEvent evt, string tableName, bool isCacheHit, EngineType engineType)
+        {
+            node.XmSql = evt.TextData ?? evt.Query;
+            node.ResolvedXmSql = evt.Query ?? evt.TextData;
+            node.DurationMs = evt.Duration;
+            node.CpuTimeMs = evt.CpuTime;
+            node.EstimatedRows = evt.EstimatedRows;
+            node.EstimatedKBytes = evt.EstimatedKBytes;
+            node.IsCacheHit = isCacheHit;
+            node.EngineType = engineType;
+            node.ObjectName = tableName;
+
+            // Reconcile row counts
+            if ((!node.Records.HasValue || node.Records == 0) && evt.EstimatedRows.HasValue && evt.EstimatedRows > 0)
+            {
+                node.Records = evt.EstimatedRows;
+                node.RecordsSource = "ServerTiming";
+            }
+
+            // Calculate parallelism
+            if (evt.Duration.HasValue && evt.NetParallelDuration.HasValue && evt.NetParallelDuration > 0)
+            {
+                node.NetParallelDurationMs = evt.NetParallelDuration;
+                node.Parallelism = (int)Math.Max(1, Math.Round((double)evt.Duration.Value / evt.NetParallelDuration.Value));
+            }
+        }
+
+        /// <summary>
+        /// Extracts columns from DirectQueryResult Fields() pattern.
+        /// E.g., "DirectQueryResult : IterPhyOp ... Fields('Sales SalesOrderDetail'[SalesOrderID])"
+        /// Returns: {"SalesOrderID"}
+        /// </summary>
+        private HashSet<string> ExtractColumnsFromDirectQueryResult(string operation)
+        {
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(operation)) return columns;
+
+            // Match Fields(...) section and extract columns within
+            var fieldsMatch = Regex.Match(operation, @"Fields\(([^)]*)\)");
+            if (fieldsMatch.Success)
+            {
+                var fieldsContent = fieldsMatch.Groups[1].Value;
+                // Match 'Table'[Column] patterns within Fields()
+                var colMatches = Regex.Matches(fieldsContent, @"'[^']*'\[([^\]]+)\]");
+                foreach (Match match in colMatches)
+                {
+                    columns.Add(match.Groups[1].Value);
+                }
+            }
+
+            return columns;
+        }
+
+        /// <summary>
+        /// Extracts table name from DirectQueryResult Fields() pattern.
+        /// E.g., "DirectQueryResult : ... Fields('Sales SalesOrderDetail'[SalesOrderID])"
+        /// Returns: "Sales SalesOrderDetail"
+        /// </summary>
+        private string ExtractTableNameFromDirectQueryResult(string operation)
+        {
+            if (string.IsNullOrEmpty(operation)) return null;
+
+            // Match first 'TableName' in Fields section
+            var fieldsMatch = Regex.Match(operation, @"Fields\([^)]*'([^']+)'");
+            if (fieldsMatch.Success)
+            {
+                return fieldsMatch.Groups[1].Value;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Normalizes table name for comparison by removing spaces and converting to lowercase.
+        /// Handles differences like "Sales SalesOrderDetail" vs "SalesSalesOrderDetail".
+        /// </summary>
+        private string NormalizeTableName(string tableName)
+        {
+            if (string.IsNullOrEmpty(tableName)) return string.Empty;
+            return tableName.Replace(" ", "").ToLowerInvariant();
         }
 
         /// <summary>
@@ -539,7 +663,7 @@ namespace DaxStudio.UI.Services
         {
             if (string.IsNullOrEmpty(xmSql)) return null;
 
-            // Match FROM 'TableName' pattern (case-insensitive)
+            // Match FROM 'TableName' pattern (case-insensitive) for xmSQL
             var match = Regex.Match(xmSql, @"\bFROM\s+'([^']+)'", RegexOptions.IgnoreCase);
             if (match.Success)
             {
@@ -547,6 +671,69 @@ namespace DaxStudio.UI.Services
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Extracts table name from T-SQL query's FROM clause.
+        /// Matches patterns like: FROM [Schema].[Table] or FROM [Table]
+        /// </summary>
+        private string ExtractTableNameFromTSql(string tSql)
+        {
+            if (string.IsNullOrEmpty(tSql)) return null;
+
+            // Match FROM [Schema].[Table] or FROM [Table] pattern
+            // Also handle "FROM [Schema].[Table] AS [alias]"
+            var match = Regex.Match(tSql, @"\bFROM\s+(?:\[([^\]]+)\]\s*\.\s*)?\[([^\]]+)\]", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                var schema = match.Groups[1].Value;
+                var table = match.Groups[2].Value;
+                // Return "Schema Table" (without dots) to match DAX naming like 'Sales SalesOrderDetail'
+                if (!string.IsNullOrEmpty(schema))
+                {
+                    return $"{schema} {table}";
+                }
+                return table;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Extracts column names from T-SQL SELECT clause.
+        /// Matches patterns like: SELECT [Column1], [Column2] FROM ...
+        /// Also handles: [Schema].[Table].[Column] or [alias].[Column]
+        /// </summary>
+        private HashSet<string> ExtractColumnsFromTSql(string tSql)
+        {
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(tSql)) return columns;
+
+            // Get the SELECT part (before FROM)
+            var fromIdx = tSql.IndexOf(" FROM ", StringComparison.OrdinalIgnoreCase);
+            var selectPart = fromIdx > 0 ? tSql.Substring(0, fromIdx) : tSql;
+
+            // Match [Column] patterns - could be standalone or after alias like [t0].[Column]
+            // The column is always the last bracketed identifier before a comma or end
+            var matches = Regex.Matches(selectPart, @"\[([^\]]+)\](?:\s*(?:,|$|\s+AS\s+))", RegexOptions.IgnoreCase);
+            foreach (Match match in matches)
+            {
+                var colName = match.Groups[1].Value;
+                // Skip if it looks like a table alias (typically t0, t1, etc.)
+                if (!Regex.IsMatch(colName, @"^t\d+$", RegexOptions.IgnoreCase))
+                {
+                    columns.Add(colName);
+                }
+            }
+
+            // Also match the pattern [alias].[Column] to get column names
+            var aliasColMatches = Regex.Matches(selectPart, @"\[[^\]]+\]\s*\.\s*\[([^\]]+)\]");
+            foreach (Match match in aliasColMatches)
+            {
+                columns.Add(match.Groups[1].Value);
+            }
+
+            return columns;
         }
 
         private void CalculateCostPercentages(EnrichedQueryPlan plan)

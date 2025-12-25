@@ -982,6 +982,32 @@
                                         </Border>
                                     </StackPanel>
 
+                                    <!-- 7c. Folded Operations (all nodes that were collapsed into this one) -->
+                                    <StackPanel Visibility="{Binding HasFoldedOperations, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="FOLDED OPERATIONS"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="6"
+                                                Margin="0,0,0,10">
+                                            <ItemsControl ItemsSource="{Binding FoldedOperations}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding}"
+                                                                   TextWrapping="Wrap"
+                                                                   FontFamily="Consolas"
+                                                                   FontSize="9"
+                                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                                   Margin="0,2,0,0"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+                                    </StackPanel>
+
                                     <!-- Issues Section (if any) -->
                                     <StackPanel Visibility="{Binding HasIssues, Converter={StaticResource BoolToCollapsedConverter}}">
                                         <TextBlock Text="ISSUES"

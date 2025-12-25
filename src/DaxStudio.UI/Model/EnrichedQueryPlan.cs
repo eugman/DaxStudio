@@ -75,6 +75,16 @@ namespace DaxStudio.UI.Model
         public int StorageEngineQueryCount { get; set; }
 
         /// <summary>
+        /// DirectQuery time component in milliseconds.
+        /// </summary>
+        public long DirectQueryDurationMs { get; set; }
+
+        /// <summary>
+        /// Number of DirectQuery queries executed.
+        /// </summary>
+        public int DirectQueryCount { get; set; }
+
+        /// <summary>
         /// Root node of the plan tree.
         /// </summary>
         public EnrichedPlanNode RootNode { get; set; }
@@ -120,10 +130,12 @@ namespace DaxStudio.UI.Model
         public bool HasIssues => IssueCount > 0;
 
         /// <summary>
-        /// Formatted SE/FE time split for display.
+        /// Formatted SE/FE/DQ time split for display.
         /// </summary>
         public string DisplayTimeSplit =>
-            $"SE: {StorageEngineDurationMs:N0} ms | FE: {FormulaEngineDurationMs:N0} ms";
+            DirectQueryDurationMs > 0
+                ? $"SE: {StorageEngineDurationMs:N0} ms | DQ: {DirectQueryDurationMs:N0} ms | FE: {FormulaEngineDurationMs:N0} ms"
+                : $"SE: {StorageEngineDurationMs:N0} ms | FE: {FormulaEngineDurationMs:N0} ms";
 
         /// <summary>
         /// Find a node by its NodeId.
