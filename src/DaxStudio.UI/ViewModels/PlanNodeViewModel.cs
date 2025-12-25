@@ -1817,17 +1817,18 @@ namespace DaxStudio.UI.ViewModels
             get
             {
                 var op = OperatorName;
-                if (op.IndexOf("Multiply", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                // Use exact match to avoid false positives (e.g., "AddColumns" matching "Add")
+                if (op.Equals("Multiply", StringComparison.OrdinalIgnoreCase) ||
                     op.Equals("Mul", StringComparison.OrdinalIgnoreCase)) return "*";
-                if (op.IndexOf("Divide", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                if (op.Equals("Divide", StringComparison.OrdinalIgnoreCase) ||
                     op.Equals("Div", StringComparison.OrdinalIgnoreCase)) return "/";
-                if (op.IndexOf("Add", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                if (op.Equals("Add", StringComparison.OrdinalIgnoreCase) ||
                     op.Equals("Plus", StringComparison.OrdinalIgnoreCase)) return "+";
-                if (op.IndexOf("Subtract", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                if (op.Equals("Subtract", StringComparison.OrdinalIgnoreCase) ||
                     op.Equals("Sub", StringComparison.OrdinalIgnoreCase) ||
                     op.Equals("Minus", StringComparison.OrdinalIgnoreCase)) return "-";
-                if (op.IndexOf("Mod", StringComparison.OrdinalIgnoreCase) >= 0) return "%";
-                if (op.IndexOf("Power", StringComparison.OrdinalIgnoreCase) >= 0) return "^";
+                if (op.Equals("Mod", StringComparison.OrdinalIgnoreCase)) return "%";
+                if (op.Equals("Power", StringComparison.OrdinalIgnoreCase)) return "^";
                 return "?";
             }
         }
@@ -1869,7 +1870,8 @@ namespace DaxStudio.UI.ViewModels
 
         /// <summary>
         /// Checks if this arithmetic node can be collapsed with its children.
-        /// Collapsible if: it's an arithmetic operator with exactly 2 value-type children.
+        /// Collapsible if: it's an arithmetic operator with exactly 2 simple value-type children.
+        /// Does NOT collapse nested arithmetic to avoid confusing display like "Multiply + [C]".
         /// </summary>
         public bool CanCollapseArithmetic
         {
@@ -1882,8 +1884,8 @@ namespace DaxStudio.UI.ViewModels
                 if (Children.Count != 2)
                     return false;
 
-                // Both children should be simple value operators or nested arithmetic
-                return Children.All(c => c.IsValueOperator || c.IsArithmeticOperator || c.Children.Count == 0);
+                // Both children should be simple value operators (NOT nested arithmetic)
+                return Children.All(c => c.IsValueOperator || c.Children.Count == 0);
             }
         }
 

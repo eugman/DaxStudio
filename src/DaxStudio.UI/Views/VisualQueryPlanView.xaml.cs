@@ -24,16 +24,30 @@ namespace DaxStudio.UI.Views
             DataContextChanged += OnDataContextChanged;
 
             // Attach mouse events for canvas panning
-            Loaded += (s, e) =>
+            Loaded += OnLoaded;
+            Unloaded += OnUnloaded;
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            if (PlanScrollViewer != null)
             {
-                if (PlanScrollViewer != null)
-                {
-                    PlanScrollViewer.PreviewMouseLeftButtonDown += ScrollViewer_PreviewMouseLeftButtonDown;
-                    PlanScrollViewer.PreviewMouseMove += ScrollViewer_PreviewMouseMove;
-                    PlanScrollViewer.PreviewMouseLeftButtonUp += ScrollViewer_PreviewMouseLeftButtonUp;
-                    PlanScrollViewer.MouseLeave += ScrollViewer_MouseLeave;
-                }
-            };
+                PlanScrollViewer.PreviewMouseLeftButtonDown += ScrollViewer_PreviewMouseLeftButtonDown;
+                PlanScrollViewer.PreviewMouseMove += ScrollViewer_PreviewMouseMove;
+                PlanScrollViewer.PreviewMouseLeftButtonUp += ScrollViewer_PreviewMouseLeftButtonUp;
+                PlanScrollViewer.MouseLeave += ScrollViewer_MouseLeave;
+            }
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            if (PlanScrollViewer != null)
+            {
+                PlanScrollViewer.PreviewMouseLeftButtonDown -= ScrollViewer_PreviewMouseLeftButtonDown;
+                PlanScrollViewer.PreviewMouseMove -= ScrollViewer_PreviewMouseMove;
+                PlanScrollViewer.PreviewMouseLeftButtonUp -= ScrollViewer_PreviewMouseLeftButtonUp;
+                PlanScrollViewer.MouseLeave -= ScrollViewer_MouseLeave;
+            }
         }
 
         private void ScrollViewer_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -101,7 +115,8 @@ namespace DaxStudio.UI.Views
 
         private void ScrollViewer_MouseLeave(object sender, MouseEventArgs e)
         {
-            if (_isPanning)
+            // Release capture if mouse leaves during pan operation or before pan threshold was reached
+            if (PlanScrollViewer.IsMouseCaptured)
             {
                 PlanScrollViewer.ReleaseMouseCapture();
                 PlanScrollViewer.Cursor = Cursors.Arrow;
