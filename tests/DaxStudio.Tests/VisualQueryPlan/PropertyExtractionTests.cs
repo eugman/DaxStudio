@@ -598,6 +598,44 @@ namespace DaxStudio.Tests.VisualQueryPlan
 
         #endregion
 
+        #region TableVarProxy RefVarName Tests
+
+        [TestMethod]
+        public void TableVarProxy_WithRefVarName_ShowsInDisplayDetail()
+        {
+            // Arrange - TableVarProxy from logical plan with RefVarName
+            var node = CreateNode("TableVarProxy: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Sales'[CustomerID], ''[IsGrandTotalRowTotal], ''[Total], ''[]) RefVarName=__DS0Core");
+
+            // Act & Assert
+            Assert.AreEqual("TableVarProxy", node.OperatorName);
+            Assert.IsNotNull(node.DisplayDetail);
+            Assert.AreEqual("__DS0Core", node.DisplayDetail, "Should show RefVarName in DisplayDetail");
+        }
+
+        [TestMethod]
+        public void TableVarProxy_WithPrimaryWindowedRefVarName_ShowsInDisplayDetail()
+        {
+            // Arrange - TableVarProxy referencing __DS0PrimaryWindowed
+            var node = CreateNode("TableVarProxy: RelLogOp DependOnCols()() 0-6 RequiredCols(0, 1, 2, 3, 4, 5, 6)('Product'[Brand], ''[IsGrandTotalRowTotal], ''[Sales_Amount], ''[Margin__], ''[Total_Cost], ''[Total_Quantity], ''[]) RefVarName=__DS0PrimaryWindowed");
+
+            // Act & Assert
+            Assert.AreEqual("TableVarProxy", node.OperatorName);
+            Assert.AreEqual("__DS0PrimaryWindowed", node.DisplayDetail);
+        }
+
+        [TestMethod]
+        public void TableVarProxy_WithoutRefVarName_DisplayDetailIsNull()
+        {
+            // Arrange - TableVarProxy without RefVarName (shouldn't normally happen but handle gracefully)
+            var node = CreateNode("TableVarProxy: RelLogOp DependOnCols()() RequiredCols(0)('Sales'[Amount])");
+
+            // Act & Assert
+            Assert.AreEqual("TableVarProxy", node.OperatorName);
+            Assert.IsNull(node.DisplayDetail);
+        }
+
+        #endregion
+
         #region Helper Methods
 
         private PlanNodeViewModel CreateNode(string operation)

@@ -870,6 +870,7 @@ namespace DaxStudio.UI.ViewModels
 
                 CollectAllNodes(RootNode, AllNodes);
                 ResolveMeasureFormulas(AllNodes);
+                ResolveVariableDefinitions(AllNodes);
                 CalculateLayout();
 
                 // Auto-select the root node to show execution metrics in the details panel
@@ -1118,6 +1119,115 @@ namespace DaxStudio.UI.ViewModels
                     Log.Debug("VisualQueryPlanViewModel: Parsed query-scoped measure [{MeasureName}]", measureName);
                 }
             }
+        }
+
+        /// <summary>
+        /// Parses VAR definitions from query text to extract table variable expressions.
+        /// Handles both top-level DEFINE VAR and inline VAR statements.
+        /// </summary>
+        private Dictionary<string, string> ParseQueryScopedVariables(string queryText)
+        {
+            var variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(queryText)) return variables;
+
+            // Pattern: VAR __VarName = <expression>
+            // Expression continues until next VAR, RETURN, EVALUATE, or end of meaningful content
+            var pattern = @"\bVAR\s+(__\w+)\s*=\s*";
+            var matches = Regex.Matches(queryText, pattern, RegexOptions.IgnoreCase | RegexOptions.Multiline);
+
+            foreach (Match match in matches)
+            {
+                var varName = match.Groups[1].Value;
+                var expressionStart = match.Index + match.Length;
+
+                // Find where the expression ends
+                var remainingText = queryText.Substring(expressionStart);
+
+                // The expression ends at the next VAR, RETURN, EVALUATE, or DEFINE
+                var endPatterns = new[] { @"\bVAR\s+__", @"\bRETURN\b", @"\bEVALUATE\b", @"\bDEFINE\b" };
+                var endIndex = remainingText.Length;
+
+                foreach (var endPattern in endPatterns)
+                {
+                    var endMatch = Regex.Match(remainingText, endPattern, RegexOptions.IgnoreCase);
+                    if (endMatch.Success && endMatch.Index < endIndex)
+                    {
+                        endIndex = endMatch.Index;
+                    }
+                }
+
+                var expression = remainingText.Substring(0, endIndex).Trim();
+
+                // Clean up the expression - remove trailing line comments
+                var lines = expression.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                var cleanedLines = new List<string>();
+                foreach (var line in lines)
+                {
+                    var trimmed = line.Trim();
+                    // Skip empty lines and remove inline comments for display
+                    if (!string.IsNullOrEmpty(trimmed) && !trimmed.StartsWith("//"))
+                    {
+                        // Remove trailing comments
+                        var commentIdx = trimmed.IndexOf("//");
+                        if (commentIdx > 0)
+                            trimmed = trimmed.Substring(0, commentIdx).TrimEnd();
+                        if (!string.IsNullOrEmpty(trimmed))
+                            cleanedLines.Add(trimmed);
+                    }
+                }
+                expression = string.Join("\n    ", cleanedLines);
+
+                if (!string.IsNullOrEmpty(varName) && !string.IsNullOrEmpty(expression))
+                {
+                    // Store with the full VAR statement for display
+                    variables[varName] = $"VAR {varName} =\n    {expression}";
+                    Log.Debug("VisualQueryPlanViewModel: Parsed query-scoped variable {VarName}", varName);
+                }
+            }
+
+            return variables;
+        }
+
+        /// <summary>
+        /// Resolves variable definitions for TableVarProxy nodes from the query text.
+        /// </summary>
+        private void ResolveVariableDefinitions(BindableCollection<PlanNodeViewModel> nodes)
+        {
+            // Try to get the query text
+            var queryText = CommandText;
+
+            if (string.IsNullOrEmpty(queryText))
+            {
+                Log.Debug("VisualQueryPlanViewModel: No query text available for variable resolution");
+                return;
+            }
+
+            var variableDefinitions = ParseQueryScopedVariables(queryText);
+            if (variableDefinitions.Count == 0)
+            {
+                Log.Debug("VisualQueryPlanViewModel: No VAR definitions found in query");
+                return;
+            }
+
+            int resolved = 0;
+            foreach (var node in nodes)
+            {
+                // Only process TableVarProxy nodes
+                if (node.OperatorName != "TableVarProxy")
+                    continue;
+
+                var refVarName = node.RefVarName;
+                if (string.IsNullOrEmpty(refVarName))
+                    continue;
+
+                if (variableDefinitions.TryGetValue(refVarName, out var definition))
+                {
+                    node.VariableDefinition = definition;
+                    resolved++;
+                }
+            }
+
+            Log.Debug("VisualQueryPlanViewModel: Resolved {Count} variable definitions", resolved);
         }
 
         private void CollectAllNodes(PlanNodeViewModel node, BindableCollection<PlanNodeViewModel> collection)

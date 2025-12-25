@@ -840,6 +840,25 @@
                                         </Border>
                                     </StackPanel>
 
+                                    <!-- 4c. VARIABLE DEFINITION (for TableVarProxy nodes) -->
+                                    <StackPanel Visibility="{Binding HasVariableDefinition, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="VARIABLE DEFINITION"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding VariableDefinition}"
+                                                       FontFamily="Consolas"
+                                                       FontSize="10"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+                                        </Border>
+                                    </StackPanel>
+
                                     <!-- 5. DATA REFERENCES (Table/Column names) -->
                                     <StackPanel Visibility="{Binding HasTableReference, Converter={StaticResource BoolToCollapsedConverter}}">
                                         <TextBlock Text="DATA REFERENCES"

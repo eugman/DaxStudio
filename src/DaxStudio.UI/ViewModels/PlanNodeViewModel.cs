@@ -156,6 +156,14 @@ namespace DaxStudio.UI.ViewModels
                         return colValueColumn;
                 }
 
+                // For TableVarProxy nodes, show the RefVarName (e.g., __DS0Core)
+                if (OperatorName == "TableVarProxy")
+                {
+                    var refVarName = ExtractRefVarName();
+                    if (!string.IsNullOrEmpty(refVarName))
+                        return refVarName;
+                }
+
                 // For Union, GroupSemijoin, CrossApply, TreatAs - show IterCols
                 if (IsJoinOrSetOperator && HasIterCols)
                 {
@@ -231,6 +239,21 @@ namespace DaxStudio.UI.ViewModels
             if (match.Success)
             {
                 return match.Groups[2].Value; // Return just [Column]
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Extracts the RefVarName from TableVarProxy operation string.
+        /// E.g., "TableVarProxy: RelLogOp ... RefVarName=__DS0Core" → "__DS0Core"
+        /// </summary>
+        private string ExtractRefVarName()
+        {
+            var op = _node.Operation ?? string.Empty;
+            var match = Regex.Match(op, @"RefVarName=(\w+)");
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
             }
             return null;
         }
@@ -998,6 +1021,36 @@ namespace DaxStudio.UI.ViewModels
         /// Whether a DAX measure formula is available.
         /// </summary>
         public bool HasMeasureFormula => !string.IsNullOrEmpty(_measureFormula);
+
+        private string _variableDefinition;
+
+        /// <summary>
+        /// The DAX definition for a table variable (resolved from query DEFINE VAR section).
+        /// Used for TableVarProxy nodes to show what the variable evaluates to.
+        /// </summary>
+        public string VariableDefinition
+        {
+            get => _variableDefinition;
+            set
+            {
+                if (_variableDefinition != value)
+                {
+                    _variableDefinition = value;
+                    NotifyOfPropertyChange();
+                    NotifyOfPropertyChange(nameof(HasVariableDefinition));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether a DAX variable definition is available.
+        /// </summary>
+        public bool HasVariableDefinition => !string.IsNullOrEmpty(_variableDefinition);
+
+        /// <summary>
+        /// The RefVarName for TableVarProxy nodes (e.g., __DS0Core).
+        /// </summary>
+        public string RefVarName => OperatorName == "TableVarProxy" ? ExtractRefVarName() : null;
 
         /// <summary>
         /// Table name referenced in the operation (parsed from 'TableName' patterns).
