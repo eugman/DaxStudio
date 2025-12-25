@@ -221,7 +221,8 @@
                                  BorderThickness="1"
                                  BorderBrush="{DynamicResource Theme.Brush.Control.Border}"
                                  Style="{StaticResource BusyBlur}">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                <ScrollViewer x:Name="PlanScrollViewer"
+                              HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto"
                               Background="{DynamicResource Theme.Brush.Content.Back}">
                     <Canvas x:Name="PlanCanvas"
@@ -321,13 +322,25 @@
                                             cal:Action.TargetWithoutContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                             cal:Message.Attach="[Event MouseLeftButtonDown] = [Action SelectNode($dataContext)]">
                                         <Border.ToolTip>
-                                            <ToolTip MaxWidth="350">
+                                            <ToolTip MaxWidth="500">
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding OperatorDisplayName}" FontWeight="Bold" FontSize="12"/>
                                                     <TextBlock Text="{Binding OperatorCategory}" Foreground="Gray" FontSize="10" Margin="0,2,0,4"/>
                                                     <TextBlock Text="{Binding OperatorDescription}" TextWrapping="Wrap" FontSize="11"/>
+                                                    <!-- DAX formula section (only visible when HasMeasureFormula is true) -->
+                                                    <Separator Margin="0,6" Visibility="{Binding HasMeasureFormula, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                                    <TextBlock Text="DAX:" FontWeight="SemiBold" FontSize="10" Foreground="#0066CC"
+                                                               Visibility="{Binding HasMeasureFormula, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                                    <TextBlock Text="{Binding MeasureFormula}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Foreground="#333" Margin="0,2,0,0"
+                                                               Visibility="{Binding HasMeasureFormula, Converter={StaticResource BoolToCollapsedConverter}}"/>
                                                     <Separator Margin="0,6"/>
-                                                    <TextBlock Text="{Binding FullOperation}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Foreground="#666"/>
+                                                    <TextBlock Text="Operation:" FontWeight="SemiBold" FontSize="10" Foreground="#444"/>
+                                                    <TextBlock Text="{Binding FullOperation}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Foreground="#666" Margin="0,2,0,0"/>
+                                                    <!-- xmSQL section (only visible when HasXmSql is true) -->
+                                                    <TextBlock Text="xmSQL:" FontWeight="SemiBold" FontSize="10" Foreground="#444" Margin="0,8,0,0"
+                                                               Visibility="{Binding HasXmSql, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                                    <TextBlock Text="{Binding ResolvedXmSql}" FontFamily="Consolas" FontSize="10" TextWrapping="Wrap" Foreground="#666" Margin="0,2,0,0"
+                                                               Visibility="{Binding HasXmSql, Converter={StaticResource BoolToCollapsedConverter}}"/>
                                                 </StackPanel>
                                             </ToolTip>
                                         </Border.ToolTip>
@@ -338,47 +351,61 @@
                                                 <RowDefinition Height="*"/>
                                             </Grid.RowDefinitions>
 
-                                            <!-- Operation name -->
-                                            <TextBlock Grid.Row="0"
-                                                       Text="{Binding OperatorDisplayName}"
-                                                       FontWeight="SemiBold"
-                                                       FontSize="11"
-                                                       Foreground="#FF333333"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       VerticalAlignment="Center"/>
-
-                                            <!-- Engine badge PRIMARY, then row count -->
-                                            <Grid Grid.Row="1" Margin="0,3,0,0">
+                                            <!-- Operation name with optional detail (name bold, detail normal) -->
+                                            <!-- Row 0: [SE/FE badge] Operator name + detail -->
+                                            <Grid Grid.Row="0">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-
-                                                <!-- Engine badge (SE=green, FE=purple) - PRIMARY -->
+                                                <!-- Engine badge (SE=green, FE=purple) - at start of line -->
                                                 <Border Grid.Column="0"
                                                         CornerRadius="3"
-                                                        Padding="6,2"
+                                                        Padding="5,1"
+                                                        Margin="0,0,6,0"
+                                                        VerticalAlignment="Top"
                                                         Background="{Binding EngineBadgeBackground}"
                                                         Visibility="{Binding HasEngineBadge, Converter={StaticResource BoolToCollapsedConverter}}">
                                                     <TextBlock Text="{Binding EngineBadge}"
-                                                               FontSize="10"
+                                                               FontSize="9"
                                                                FontWeight="Bold"
                                                                Foreground="{Binding EngineBadgeForeground}"/>
                                                 </Border>
-
-                                                <!-- Row count with severity color -->
+                                                <!-- Operator name + detail (with proper text wrapping) -->
                                                 <TextBlock Grid.Column="1"
-                                                           Text="{Binding RowsDisplayFormatted}"
-                                                           FontSize="10"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{Binding RowCountColor}"
-                                                           HorizontalAlignment="Right"
-                                                           VerticalAlignment="Center"
-                                                           Visibility="{Binding HasRecords, Converter={StaticResource BoolToCollapsedConverter}}"/>
+                                                           FontSize="11"
+                                                           Foreground="#FF333333"
+                                                           TextWrapping="Wrap"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Top">
+                                                    <Run Text="{Binding DisplayName, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="{Binding DisplayDetailWithColon, Mode=OneWay}" FontWeight="Normal"/>
+                                                </TextBlock>
                                             </Grid>
 
-                                            <!-- Badges row: Cache hit, Callback warning -->
+                                            <!-- Row 1: Row count (right-aligned) -->
+                                            <TextBlock Grid.Row="1"
+                                                       Text="{Binding RowsDisplayFormatted}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{Binding RowCountColor}"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,2,0,0"
+                                                       Visibility="{Binding HasRecords, Converter={StaticResource BoolToCollapsedConverter}}"/>
+
+                                            <!-- Badges row: Parallelism, Cache hit, Callback warning -->
                                             <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,2,0,0">
+                                                <!-- Parallelism badge (shows thread count for parallel SE operations) -->
+                                                <Border Background="#9C27B0"
+                                                        CornerRadius="2"
+                                                        Padding="4,1"
+                                                        Margin="0,0,4,0"
+                                                        Visibility="{Binding HasParallelism, Converter={StaticResource BoolToCollapsedConverter}}"
+                                                        ToolTip="{Binding ParallelismDisplay}">
+                                                    <TextBlock Text="{Binding Parallelism, StringFormat=x{0}}"
+                                                               FontSize="8"
+                                                               FontWeight="Bold"
+                                                               Foreground="White"/>
+                                                </Border>
                                                 <!-- Cache hit indicator -->
                                                 <Border Background="#2196F3"
                                                         CornerRadius="2"
@@ -390,16 +417,19 @@
                                                                FontWeight="Bold"
                                                                Foreground="White"/>
                                                 </Border>
-                                                <!-- Callback warning indicator -->
+                                                <!-- Callback warning indicator with emoji -->
                                                 <Border Background="#FF5722"
                                                         CornerRadius="2"
                                                         Padding="4,1"
+                                                        Margin="0,0,4,0"
                                                         Visibility="{Binding HasCallback, Converter={StaticResource BoolToCollapsedConverter}}"
-                                                        ToolTip="CallbackDataID - SE calling FE (not cached)">
-                                                    <TextBlock Text="CB"
-                                                               FontSize="8"
+                                                        ToolTip="⚠️ CallbackDataID - SE calling FE (results NOT cached)">
+                                                    <TextBlock FontSize="8"
                                                                FontWeight="Bold"
-                                                               Foreground="White"/>
+                                                               Foreground="White">
+                                                        <Run Text="⚠"/>
+                                                        <Run Text=" CB"/>
+                                                    </TextBlock>
                                                 </Border>
                                             </StackPanel>
 
@@ -478,69 +508,157 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- 1. ENGINE SECTION (FE/SE) - TOP PRIORITY -->
-                                    <TextBlock Text="ENGINE"
-                                               FontWeight="Bold"
-                                               FontSize="10"
-                                               Foreground="{DynamicResource MutedTextBrush}"
-                                               Margin="0,0,0,4"/>
-                                    <Border CornerRadius="4"
-                                            Padding="10,8"
-                                            Margin="0,0,0,10"
-                                            Background="{Binding EngineBadgeBackground}">
-                                        <StackPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding EngineBadge}"
-                                                           FontSize="16"
-                                                           FontWeight="Bold"
-                                                           Foreground="White"
-                                                           Margin="0,0,8,0"/>
-                                                <TextBlock Text="{Binding EngineTypeDisplay}"
-                                                           FontSize="12"
-                                                           Foreground="White"
-                                                           VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                                <TextBlock FontSize="10"
-                                                           Foreground="White"
-                                                           Opacity="0.85">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="Multi-threaded, highly optimized"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding EngineBadge}" Value="FE">
-                                                                    <Setter Property="Text" Value="Single-threaded, handles complex DAX"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <!-- Parallelism indicator -->
-                                                <Border Background="White"
-                                                        Opacity="0.9"
-                                                        CornerRadius="3"
-                                                        Padding="6,2"
-                                                        Margin="8,0,0,0"
-                                                        Visibility="{Binding HasParallelism, Converter={StaticResource BoolToCollapsedConverter}}">
-                                                    <TextBlock Text="{Binding ParallelismDisplay}"
-                                                               FontSize="10"
+                                    <!-- 1. ENGINE SECTION (FE/SE) - Only show when engine type is known -->
+                                    <StackPanel Visibility="{Binding HasEngineBadge, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="ENGINE"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border CornerRadius="4"
+                                                Padding="10,8"
+                                                Margin="0,0,0,10"
+                                                Background="{Binding EngineBadgeBackground}">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding EngineBadge}"
+                                                               FontSize="16"
                                                                FontWeight="Bold"
-                                                               Foreground="{Binding EngineBadgeBackground}"/>
-                                                </Border>
+                                                               Foreground="White"
+                                                               Margin="0,0,8,0"/>
+                                                    <TextBlock Text="{Binding EngineTypeDisplay}"
+                                                               FontSize="12"
+                                                               Foreground="White"
+                                                               VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                    <TextBlock FontSize="10"
+                                                               Foreground="White"
+                                                               Opacity="0.85">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Text" Value="Multi-threaded, highly optimized"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding EngineBadge}" Value="FE">
+                                                                        <Setter Property="Text" Value="Single-threaded, handles complex DAX"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <!-- Parallelism indicator -->
+                                                    <Border Background="White"
+                                                            Opacity="0.9"
+                                                            CornerRadius="3"
+                                                            Padding="6,2"
+                                                            Margin="8,0,0,0"
+                                                            Visibility="{Binding HasParallelism, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                        <TextBlock Text="{Binding ParallelismDisplay}"
+                                                                   FontSize="10"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="{Binding EngineBadgeBackground}"/>
+                                                    </Border>
+                                                </StackPanel>
                                             </StackPanel>
-                                        </StackPanel>
-                                    </Border>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- 1b. EXECUTION METRICS (Root Node Only) - Query-level timing summary -->
+                                    <StackPanel Visibility="{Binding HasExecutionMetrics, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="EXECUTION METRICS"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+
+                                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                                           Text="Total Duration:"
+                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                           Margin="0,0,12,4"/>
+                                                <TextBlock Grid.Row="0" Grid.Column="1"
+                                                           Text="{Binding PlanTotalDurationMs, StringFormat={}{0:N0} ms}"
+                                                           FontWeight="Bold"
+                                                           FontSize="12"
+                                                           Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+
+                                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                                           Text="Formula Engine:"
+                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                           Margin="0,0,12,4"/>
+                                                <TextBlock Grid.Row="1" Grid.Column="1"
+                                                           Text="{Binding PlanFormulaEngineDurationMs, StringFormat={}{0:N0} ms}"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#7C4DFF"/>
+
+                                                <TextBlock Grid.Row="2" Grid.Column="0"
+                                                           Text="Storage Engine:"
+                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                           Margin="0,0,12,4"/>
+                                                <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding PlanStorageEngineDurationMs, StringFormat={}{0:N0} ms}"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="#4CAF50"/>
+                                                    <TextBlock Text="{Binding SEParallelismFactor}"
+                                                               FontSize="10"
+                                                               Foreground="#666"
+                                                               Margin="6,0,0,0"
+                                                               VerticalAlignment="Center"/>
+                                                </StackPanel>
+
+                                                <TextBlock Grid.Row="3" Grid.Column="0"
+                                                           Text="SE Queries:"
+                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                           Margin="0,0,12,4"/>
+                                                <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding PlanStorageEngineQueryCount, StringFormat={}{0:N0}}"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+                                                    <TextBlock Text="{Binding PlanCacheHits, StringFormat=({0} cached)}"
+                                                               FontSize="10"
+                                                               Foreground="#666"
+                                                               Margin="6,0,0,0"
+                                                               VerticalAlignment="Center"/>
+                                                </StackPanel>
+
+                                                <TextBlock Grid.Row="4" Grid.Column="0"
+                                                           Text="SE CPU Time:"
+                                                           Foreground="{DynamicResource MutedTextBrush}"
+                                                           Margin="0,0,12,0"/>
+                                                <TextBlock Grid.Row="4" Grid.Column="1"
+                                                           Text="{Binding PlanStorageEngineCpuMs, StringFormat={}{0:N0} ms}"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
 
                                     <!-- 2. PERFORMANCE METRICS - Row counts, duration, data size -->
-                                    <TextBlock Text="PERFORMANCE METRICS"
-                                               FontWeight="Bold"
-                                               FontSize="10"
-                                               Foreground="{DynamicResource MutedTextBrush}"
-                                               Margin="0,0,0,4"/>
-                                    <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
-                                            CornerRadius="3"
-                                            Padding="8"
-                                            Margin="0,0,0,10">
+                                    <StackPanel Visibility="{Binding HasAnyPerformanceMetrics, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="PERFORMANCE METRICS"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
@@ -632,7 +750,8 @@
                                                        Foreground="{DynamicResource Theme.Brush.Default.Fore}"
                                                        Visibility="{Binding HasCost, Converter={StaticResource BoolToCollapsedConverter}}"/>
                                         </Grid>
-                                    </Border>
+                                        </Border>
+                                    </StackPanel>
 
                                     <!-- 3. CALLBACK WARNING (if CallbackDataID present) -->
                                     <Border Background="#FFF3E0"
@@ -644,7 +763,7 @@
                                             Visibility="{Binding HasCallback, Converter={StaticResource BoolToCollapsedConverter}}">
                                         <StackPanel>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" Foreground="#FF5722" FontSize="14" Margin="0,0,6,0"/>
+                                                <TextBlock Text="⚠️" FontSize="14" Margin="0,0,6,0"/>
                                                 <TextBlock Text="CALLBACK DETECTED"
                                                            FontWeight="Bold"
                                                            FontSize="11"
@@ -666,7 +785,61 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- 4. DATA REFERENCES (Table/Column names) -->
+                                    <!-- 4. DAX MEASURE REFERENCE -->
+                                    <StackPanel Visibility="{Binding HasMeasureReference, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="DAX REFERENCE"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding MeasureReference}"
+                                                           FontFamily="Consolas"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#0066CC"/>
+                                                <!-- Measure formula (if available) -->
+                                                <Border Background="{DynamicResource Theme.Brush.Content.Back}"
+                                                        BorderBrush="{DynamicResource Theme.Brush.Control.Border}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="3"
+                                                        Padding="8"
+                                                        Margin="0,6,0,0"
+                                                        Visibility="{Binding HasMeasureFormula, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                    <TextBlock Text="{Binding MeasureFormula}"
+                                                               FontFamily="Consolas"
+                                                               FontSize="10"
+                                                               TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- 4b. TYPE COERCION -->
+                                    <StackPanel Visibility="{Binding HasTypeCoercion, Converter={StaticResource BoolToCollapsedConverter}}">
+                                        <TextBlock Text="TYPE COERCION"
+                                                   FontWeight="Bold"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
+                                                   Margin="0,0,0,4"/>
+                                        <Border Background="#FFF3E0"
+                                                CornerRadius="3"
+                                                Padding="8"
+                                                Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding TypeCoercionInfo}"
+                                                       FontFamily="Consolas"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#E65100"/>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- 5. DATA REFERENCES (Table/Column names) -->
                                     <StackPanel Visibility="{Binding HasTableReference, Converter={StaticResource BoolToCollapsedConverter}}">
                                         <TextBlock Text="DATA REFERENCES"
                                                    FontWeight="Bold"
@@ -708,41 +881,6 @@
                                                            Foreground="{DynamicResource Theme.Brush.Default.Fore}"
                                                            Visibility="{Binding HasColumnReferences, Converter={StaticResource BoolToCollapsedConverter}}"/>
                                             </Grid>
-                                        </Border>
-                                    </StackPanel>
-
-                                    <!-- 5. DAX MEASURE REFERENCE -->
-                                    <StackPanel Visibility="{Binding HasMeasureReference, Converter={StaticResource BoolToCollapsedConverter}}">
-                                        <TextBlock Text="DAX REFERENCE"
-                                                   FontWeight="Bold"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource MutedTextBrush}"
-                                                   Margin="0,0,0,4"/>
-                                        <Border Background="{DynamicResource Theme.Brush.MenuBar.Back}"
-                                                CornerRadius="3"
-                                                Padding="8"
-                                                Margin="0,0,0,10">
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding MeasureReference}"
-                                                           FontFamily="Consolas"
-                                                           FontSize="11"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="#0066CC"/>
-                                                <!-- Measure formula (if available) -->
-                                                <Border Background="{DynamicResource Theme.Brush.Content.Back}"
-                                                        BorderBrush="{DynamicResource Theme.Brush.Control.Border}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="3"
-                                                        Padding="8"
-                                                        Margin="0,6,0,0"
-                                                        Visibility="{Binding HasMeasureFormula, Converter={StaticResource BoolToCollapsedConverter}}">
-                                                    <TextBlock Text="{Binding MeasureFormula}"
-                                                               FontFamily="Consolas"
-                                                               FontSize="10"
-                                                               TextWrapping="Wrap"
-                                                               Foreground="{DynamicResource Theme.Brush.Default.Fore}"/>
-                                                </Border>
-                                            </StackPanel>
                                         </Border>
                                     </StackPanel>
 
@@ -823,7 +961,7 @@
                                         </ItemsControl>
                                     </StackPanel>
 
-                                    <!-- 8. DOCUMENTATION LINKS -->
+                                    <!-- 8. DOCUMENTATION LINKS - filtered by plan type -->
                                     <TextBlock Text="DOCUMENTATION"
                                                FontWeight="Bold"
                                                FontSize="10"
@@ -834,19 +972,35 @@
                                             Padding="8"
                                             Margin="0,0,0,0">
                                         <StackPanel>
-                                            <TextBlock Margin="0,0,0,4">
+                                            <!-- dax.guide link for the specific DAX function (if applicable) -->
+                                            <TextBlock Margin="0,0,0,4"
+                                                       Visibility="{Binding HasDaxGuideUrl, Converter={StaticResource BoolToCollapsedConverter}}">
+                                                <Hyperlink NavigateUri="{Binding DaxGuideUrl}"
+                                                           RequestNavigate="Hyperlink_RequestNavigate">
+                                                    <TextBlock>
+                                                        <Run Text="{Binding OperatorDisplayName, Mode=OneWay}"/>
+                                                        <Run Text=" (dax.guide)"/>
+                                                    </TextBlock>
+                                                </Hyperlink>
+                                            </TextBlock>
+                                            <!-- Logical Plan doc - shown when viewing logical plan -->
+                                            <TextBlock Margin="0,0,0,4"
+                                                       Visibility="{Binding DataContext.ShowLogicalPlan, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToCollapsedConverter}}">
                                                 <Hyperlink NavigateUri="https://docs.sqlbi.com/dax-internals/vertipaq/logical-query-plan"
                                                            RequestNavigate="Hyperlink_RequestNavigate">
                                                     Logical Query Plan (SQLBI)
                                                 </Hyperlink>
                                             </TextBlock>
-                                            <TextBlock Margin="0,0,0,4">
+                                            <!-- Physical Plan doc - shown when viewing physical plan -->
+                                            <TextBlock Margin="0,0,0,4"
+                                                       Visibility="{Binding DataContext.ShowPhysicalPlan, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToCollapsedConverter}}">
                                                 <Hyperlink NavigateUri="https://docs.sqlbi.com/dax-internals/vertipaq/physical-query-plan"
                                                            RequestNavigate="Hyperlink_RequestNavigate">
                                                     Physical Query Plan (SQLBI)
                                                 </Hyperlink>
                                             </TextBlock>
-                                            <TextBlock>
+                                            <!-- xmSQL doc - shown only when selected node has xmSQL data -->
+                                            <TextBlock Visibility="{Binding HasXmSql, Converter={StaticResource BoolToCollapsedConverter}}">
                                                 <Hyperlink NavigateUri="https://docs.sqlbi.com/dax-internals/vertipaq/xmSQL"
                                                            RequestNavigate="Hyperlink_RequestNavigate">
                                                     xmSQL Reference (SQLBI)
@@ -976,6 +1130,7 @@
                                                             Margin="0,8,0,0"
                                                             Padding="8,4"
                                                             HorizontalAlignment="Left"
+                                                            cal:Action.TargetWithoutContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                             cal:Message.Attach="[Event Click] = [Action NavigateToIssue($dataContext)]"/>
                                                 </StackPanel>
                                             </StackPanel>
@@ -984,13 +1139,13 @@
                                 </ListBox.ItemTemplate>
                             </ListBox>
 
-                            <!-- No issues message -->
+                            <!-- No issues message - show when HasIssues is false -->
                             <TextBlock Grid.Row="1"
                                        Text="No issues detected"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
                                        Foreground="{DynamicResource MutedTextBrush}"
-                                       Visibility="{Binding HasIssues, Converter={StaticResource BoolToHiddenConverter}}"/>
+                                       Visibility="{Binding HasNoIssues, Converter={StaticResource BoolToHiddenConverter}}"/>
                         </Grid>
                     </TabItem>
                 </TabControl>
