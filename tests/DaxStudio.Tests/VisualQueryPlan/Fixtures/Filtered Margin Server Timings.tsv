@@ -1,3 +1,0 @@
-Line	Subclass	Duration	CPU	Par.	Rows	KB	Timeline	Query
-2	Scan	2	0		673	6		SELECT 'Customer'[First Name] FROM 'Customer';   Estimated size: rows = 673  bytes = 5,384
-4	Scan	4	0		1	1		SELECT SUM ( 'Internet Sales'[Margin] ) FROM 'Internet Sales' LEFT OUTER JOIN 'Customer' ON 'Internet Sales'[Customer Id]='Customer'[Customer Id] LEFT OUTER JOIN 'Product' ON 'Internet Sales'[Product Id]='Product'[Product Id] WHERE 'Customer'[First Name] IN ( 'Isabel', 'Tonya', 'Robyn', 'Wilson', 'Maurizio', 'Gretchen', 'Renée', 'Curtis', 'Deanna', 'Mallory'..[589 total values, not all displayed] ) VAND 'Product'[Color] NIN ( 'Black' ) ;   Estimated size: rows = 1  bytes = 16

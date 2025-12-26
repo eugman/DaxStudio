@@ -702,19 +702,31 @@ namespace DaxStudio.Tests.VisualQueryPlan
 
             // Act
             var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
+
+            // Debug: Check enriched plan structure for Add nodes
+            var enrichedAddNodes = plan.AllNodes.Where(n => n.Operation?.StartsWith("Add:") == true).ToList();
+            System.Diagnostics.Debug.WriteLine($"Enriched Add nodes: {enrichedAddNodes.Count}");
+            foreach (var add in enrichedAddNodes)
+            {
+                var parentId = add.Parent?.NodeId;
+                var children = plan.AllNodes.Where(n => n.Parent?.NodeId == add.NodeId).Select(n => n.NodeId).ToList();
+                System.Diagnostics.Debug.WriteLine(
+                    $"  Enriched Add NodeId={add.NodeId}, ParentId={parentId}, Children=[{string.Join(",", children)}]");
+            }
+
             var tree = PlanNodeViewModel.BuildTree(plan);
             var allNodes = GetAllNodes(tree).ToList();
 
             // Find Add nodes
             var addNodes = allNodes.Where(n => n.OperatorName == "Add").ToList();
 
-            System.Diagnostics.Debug.WriteLine($"Total nodes: {allNodes.Count}");
-            System.Diagnostics.Debug.WriteLine($"Add nodes after folding: {addNodes.Count}");
+            System.Diagnostics.Debug.WriteLine($"Total VM nodes: {allNodes.Count}");
+            System.Diagnostics.Debug.WriteLine($"Add VM nodes after folding: {addNodes.Count}");
 
             foreach (var add in addNodes)
             {
                 System.Diagnostics.Debug.WriteLine(
-                    $"  Add NodeId={add.NodeId}, ChainedCount={add.ChainedOperatorCount}, " +
+                    $"  Add VM NodeId={add.NodeId}, ChainedCount={add.ChainedOperatorCount}, " +
                     $"HasChained={add.HasChainedOperators}, DisplayName={add.DisplayName}");
             }
 

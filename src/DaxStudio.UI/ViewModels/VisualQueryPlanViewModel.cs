@@ -42,6 +42,7 @@ namespace DaxStudio.UI.ViewModels
         private string _physicalQueryPlanText;
         private string _logicalQueryPlanText;
         private bool _showPhysicalPlan = true;
+        private List<TraceStorageEngineEvent> _timingEvents = new List<TraceStorageEngineEvent>();
         private double _zoomLevel = 1.0;
         private int _selectedTabIndex = 0;
 
@@ -415,8 +416,10 @@ namespace DaxStudio.UI.ViewModels
                 else if (traceEvent.EventClass == DaxStudioTraceEventClass.VertiPaqSEQueryEnd)
                 {
                     // Extract SE events directly from the queue
-                    Log.Debug("{class} {method} Found SE event - Duration={Duration}, ObjectName={ObjectName}",
-                        nameof(VisualQueryPlanViewModel), nameof(ProcessResults), traceEvent.Duration, traceEvent.ObjectName);
+                    Log.Debug("{class} {method} Found SE event - Duration={Duration}, ObjectName={ObjectName}, TextDataLen={TextDataLen}, TextDataStart='{TextDataStart}'",
+                        nameof(VisualQueryPlanViewModel), nameof(ProcessResults), traceEvent.Duration, traceEvent.ObjectName,
+                        traceEvent.TextData?.Length ?? 0,
+                        traceEvent.TextData?.Substring(0, Math.Min(100, traceEvent.TextData?.Length ?? 0)) ?? "(null)");
                     var seEvent = new TraceStorageEngineEvent
                     {
                         ObjectName = traceEvent.ObjectName,
@@ -477,6 +480,9 @@ namespace DaxStudio.UI.ViewModels
 
             Log.Debug("{class} {method} Event processing complete - PhysicalRows={Physical}, LogicalRows={Logical}, SEEvents={SE}, TotalDuration={TotalDuration}ms",
                 nameof(VisualQueryPlanViewModel), nameof(ProcessResults), physicalPlanRows.Count, logicalPlanRows.Count, timingEvents.Count, TotalDuration);
+
+            // Store timing events for save/load
+            _timingEvents = timingEvents;
 
             // Enrich the plans asynchronously
             try
@@ -626,6 +632,145 @@ namespace DaxStudio.UI.ViewModels
             ZoomLevel = 1.0;
         }
 
+        #endregion
+
+        #region Expand/Collapse All
+
+        /// <summary>
+        /// Whether any nodes are currently collapsed.
+        /// </summary>
+        public bool HasCollapsedNodes
+        {
+            get
+            {
+                if (RootNode == null) return false;
+                return GetAllNodesRecursive(RootNode).Any(n => n.IsSubtreeCollapsed);
+            }
+        }
+
+        /// <summary>
+        /// Whether any collapsible nodes are currently expanded.
+        /// </summary>
+        public bool HasExpandedCollapsibleNodes
+        {
+            get
+            {
+                if (RootNode == null) return false;
+                return GetAllNodesRecursive(RootNode).Any(n => n.CanToggleSubtree && !n.IsSubtreeCollapsed);
+            }
+        }
+
+        /// <summary>
+        /// Gets all nodes recursively (including collapsed subtrees).
+        /// </summary>
+        private IEnumerable<PlanNodeViewModel> GetAllNodesRecursive(PlanNodeViewModel node)
+        {
+            yield return node;
+            foreach (var child in node.Children)
+            {
+                foreach (var descendant in GetAllNodesRecursive(child))
+                {
+                    yield return descendant;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Expands all collapsed subtrees.
+        /// </summary>
+        public void ExpandAll()
+        {
+            if (RootNode == null) return;
+
+            var collapsedNodes = GetAllNodesRecursive(RootNode)
+                .Where(n => n.IsSubtreeCollapsed)
+                .ToList();
+
+            if (collapsedNodes.Count == 0) return;
+
+            foreach (var node in collapsedNodes)
+            {
+                node.IsSubtreeCollapsed = false;
+            }
+
+            RefreshLayoutAfterToggle();
+            NotifyOfPropertyChange(nameof(HasCollapsedNodes));
+            NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
+        }
+
+        /// <summary>
+        /// Collapses all collapsible subtrees using the auto-collapse algorithm.
+        /// </summary>
+        public void CollapseAll()
+        {
+            if (RootNode == null) return;
+
+            // First expand everything to reset state
+            var collapsedNodes = GetAllNodesRecursive(RootNode)
+                .Where(n => n.IsSubtreeCollapsed)
+                .ToList();
+
+            foreach (var node in collapsedNodes)
+            {
+                node.IsSubtreeCollapsed = false;
+            }
+
+            // Invalidate subtree widths since collapse state changed
+            RootNode.InvalidateSubtreeWidth();
+
+            // Now run auto-collapse
+            AutoCollapseSubtrees(RootNode);
+
+            RefreshLayoutAfterToggle();
+            NotifyOfPropertyChange(nameof(HasCollapsedNodes));
+            NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
+        }
+
+        /// <summary>
+        /// Expands paths to all nodes that have issues, making them visible.
+        /// </summary>
+        public void ExpandIssueNodes()
+        {
+            if (RootNode == null || Issues.Count == 0) return;
+
+            // Get all unique node IDs that have issues
+            var issueNodeIds = Issues.Select(i => i.AffectedNodeId).Distinct().ToList();
+
+            // Find each node and expand the path to it
+            foreach (var nodeId in issueNodeIds)
+            {
+                var node = FindNodeInTree(RootNode, nodeId);
+                if (node != null)
+                {
+                    node.ExpandPathToRoot();
+                }
+            }
+
+            RefreshLayoutAfterToggle();
+            NotifyOfPropertyChange(nameof(HasCollapsedNodes));
+            NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
+        }
+
+        /// <summary>
+        /// Finds a node by ID in the full tree (including collapsed subtrees).
+        /// </summary>
+        private PlanNodeViewModel FindNodeInTree(PlanNodeViewModel root, int nodeId)
+        {
+            if (root.NodeId == nodeId) return root;
+
+            foreach (var child in root.Children)
+            {
+                var found = FindNodeInTree(child, nodeId);
+                if (found != null) return found;
+            }
+
+            return null;
+        }
+
+        #endregion
+
+        #region Node Selection
+
         public void SelectNode(PlanNodeViewModel node)
         {
             SelectedNode = node;
@@ -643,6 +788,12 @@ namespace DaxStudio.UI.ViewModels
             var node = FindNodeOrAncestor(issue.AffectedNodeId);
             if (node != null)
             {
+                // Expand the path to this node (in case any ancestor is collapsed)
+                node.ExpandPathToRoot();
+
+                // Recalculate layout since collapsed state may have changed
+                CalculateLayout();
+
                 SelectedNode = node;
                 // Switch to Node Details tab to show the selected node
                 SelectedTabIndex = 0;
@@ -689,7 +840,8 @@ namespace DaxStudio.UI.ViewModels
                 CommandText = CommandText,
                 Parameters = Parameters,
                 StartDatetime = StartDatetime,
-                TotalDuration = TotalDuration
+                TotalDuration = TotalDuration,
+                TimingEvents = _timingEvents
             };
 
             return JsonConvert.SerializeObject(model, Formatting.Indented);
@@ -718,15 +870,19 @@ namespace DaxStudio.UI.ViewModels
             Parameters = model.Parameters;
             StartDatetime = model.StartDatetime;
             TotalDuration = model.TotalDuration;
+            _timingEvents = model.TimingEvents ?? new List<TraceStorageEngineEvent>();
 
-            // Re-parse and enrich the plans
+            Log.Debug("{class} {method} Loaded timing events: {Count}",
+                nameof(VisualQueryPlanViewModel), nameof(LoadJson), _timingEvents.Count);
+
+            // Re-parse and enrich the plans with timing events
             Task.Run(async () =>
             {
                 if (!string.IsNullOrEmpty(PhysicalQueryPlanText))
                 {
                     var rows = ParsePhysicalPlan(PhysicalQueryPlanText);
                     _physicalPlan = await _enrichmentService.EnrichPhysicalPlanAsync(
-                        rows, null, null, ActivityID);
+                        rows, _timingEvents, null, ActivityID);
 
                     // Set timing values from loaded state (same as ProcessResults)
                     _physicalPlan.TotalDurationMs = TotalDuration;
@@ -740,7 +896,7 @@ namespace DaxStudio.UI.ViewModels
                 {
                     var rows = ParseLogicalPlan(LogicalQueryPlanText);
                     _logicalPlan = await _enrichmentService.EnrichLogicalPlanAsync(
-                        rows, null, null, ActivityID);
+                        rows, _timingEvents, null, ActivityID);
 
                     // Set timing values from loaded state (same as ProcessResults)
                     _logicalPlan.TotalDurationMs = TotalDuration;
@@ -860,22 +1016,58 @@ namespace DaxStudio.UI.ViewModels
                 return;
             }
 
+            var totalSw = System.Diagnostics.Stopwatch.StartNew();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
             RootNode = PlanNodeViewModel.BuildTree(plan);
-            AllNodes.Clear();
+            Log.Debug(">>> PERF: BuildTree took {ElapsedMs}ms", sw.ElapsedMilliseconds);
 
             if (RootNode != null)
             {
                 // Collapse simple comparison and arithmetic operators to reduce visual clutter
+                sw.Restart();
                 CollapseSimpleOperators(RootNode);
+                Log.Debug(">>> PERF: CollapseSimpleOperators took {ElapsedMs}ms", sw.ElapsedMilliseconds);
 
-                CollectAllNodes(RootNode, AllNodes);
+                // Auto-collapse large subtrees from leaves upward to reduce initial complexity
+                sw.Restart();
+                AutoCollapseSubtrees(RootNode);
+                Log.Debug(">>> PERF: AutoCollapseSubtrees took {ElapsedMs}ms", sw.ElapsedMilliseconds);
+
+                // Collect all nodes using batch operation to avoid per-item notifications
+                sw.Restart();
+                var nodeList = CollectAllNodesAsList(RootNode);
+                AllNodes.IsNotifying = false;
+                AllNodes.Clear();
+                AllNodes.AddRange(nodeList);
+                AllNodes.IsNotifying = true;
+                AllNodes.Refresh();
+                Log.Debug(">>> PERF: CollectAllNodes took {ElapsedMs}ms, collected {Count} nodes", sw.ElapsedMilliseconds, AllNodes.Count);
+
+                sw.Restart();
                 ResolveMeasureFormulas(AllNodes);
+                Log.Debug(">>> PERF: ResolveMeasureFormulas took {ElapsedMs}ms", sw.ElapsedMilliseconds);
+
+                sw.Restart();
                 ResolveVariableDefinitions(AllNodes);
+                Log.Debug(">>> PERF: ResolveVariableDefinitions took {ElapsedMs}ms", sw.ElapsedMilliseconds);
+
+                sw.Restart();
                 CalculateLayout();
+                Log.Debug(">>> PERF: CalculateLayout took {ElapsedMs}ms", sw.ElapsedMilliseconds);
 
                 // Auto-select the root node to show execution metrics in the details panel
                 SelectedNode = RootNode;
+
+                // Notify expand/collapse button states
+                NotifyOfPropertyChange(nameof(HasCollapsedNodes));
+                NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
             }
+            else
+            {
+                AllNodes.Clear();
+            }
+            Log.Debug(">>> PERF: Total DisplayPlan processing took {ElapsedMs}ms", totalSw.ElapsedMilliseconds);
 
             // Update issues from the currently displayed plan
             Issues.Clear();
@@ -959,6 +1151,71 @@ namespace DaxStudio.UI.ViewModels
             if (node == null) return false;
             var opName = node.OperatorName?.ToLowerInvariant() ?? "";
             return opName.StartsWith("proxy");
+        }
+
+        /// <summary>
+        /// Auto-collapses large subtrees from leaves upward to reduce initial visual complexity.
+        /// Starts from the deepest collapsible nodes and works toward the root,
+        /// stopping when the visible tree width is below the threshold.
+        /// </summary>
+        private void AutoCollapseSubtrees(PlanNodeViewModel root, int targetVisibleWidth = 25)
+        {
+            if (root == null) return;
+
+            // If tree is already small enough, don't collapse anything
+            if (root.VisibleSubtreeWidth <= targetVisibleWidth)
+                return;
+
+            // Collect all nodes with their depths
+            var nodesWithDepth = new List<(PlanNodeViewModel Node, int Depth)>();
+            CollectNodesWithDepth(root, 0, nodesWithDepth);
+
+            // Filter to only collapsible nodes and sort by depth descending (deepest first)
+            var collapsibleNodes = nodesWithDepth
+                .Where(x => x.Node.CanToggleSubtree && !x.Node.IsSubtreeCollapsed)
+                .OrderByDescending(x => x.Depth)
+                .ThenByDescending(x => x.Node.SubtreeWidth) // Within same depth, collapse largest first
+                .Select(x => x.Node)
+                .ToList();
+
+            Log.Debug("AutoCollapseSubtrees: Found {Count} collapsible nodes, visible width = {Width}, total width = {TotalWidth}",
+                collapsibleNodes.Count, root.VisibleSubtreeWidth, root.SubtreeWidth);
+
+            // Collapse nodes from leaves upward until we're under the target width
+            int collapsedCount = 0;
+            foreach (var node in collapsibleNodes)
+            {
+                // Skip if already collapsed (parent was collapsed)
+                if (node.IsSubtreeCollapsed)
+                    continue;
+
+                // Collapse this node
+                node.IsSubtreeCollapsed = true;
+                collapsedCount++;
+
+                // Check if we've reached our target (VisibleSubtreeWidth recalculates dynamically)
+                if (root.VisibleSubtreeWidth <= targetVisibleWidth)
+                {
+                    Log.Debug("AutoCollapseSubtrees: Collapsed {Count} nodes, new visible width = {Width}",
+                        collapsedCount, root.VisibleSubtreeWidth);
+                    return;
+                }
+            }
+
+            Log.Debug("AutoCollapseSubtrees: Collapsed all {Count} collapsible nodes, final visible width = {Width}",
+                collapsedCount, root.VisibleSubtreeWidth);
+        }
+
+        /// <summary>
+        /// Recursively collects all nodes with their depth from root.
+        /// </summary>
+        private void CollectNodesWithDepth(PlanNodeViewModel node, int depth, List<(PlanNodeViewModel Node, int Depth)> result)
+        {
+            result.Add((node, depth));
+            foreach (var child in node.Children)
+            {
+                CollectNodesWithDepth(child, depth + 1, result);
+            }
         }
 
         /// <summary>
@@ -1230,14 +1487,82 @@ namespace DaxStudio.UI.ViewModels
             Log.Debug("VisualQueryPlanViewModel: Resolved {Count} variable definitions", resolved);
         }
 
-        private void CollectAllNodes(PlanNodeViewModel node, BindableCollection<PlanNodeViewModel> collection)
+        /// <summary>
+        /// Collects all visible nodes into a list and wires up callbacks.
+        /// Uses a temporary list for performance (avoids BindableCollection notification overhead).
+        /// </summary>
+        private List<PlanNodeViewModel> CollectAllNodesAsList(PlanNodeViewModel node)
         {
-            collection.Add(node);
-            foreach (var child in node.Children)
+            var result = new List<PlanNodeViewModel>();
+            CollectAllNodesRecursive(node, result);
+            return result;
+        }
+
+        private void CollectAllNodesRecursive(PlanNodeViewModel node, List<PlanNodeViewModel> list)
+        {
+            list.Add(node);
+
+            // Wire up the toggle callback to refresh layout when subtree is collapsed/expanded
+            node.OnSubtreeToggled = RefreshLayoutAfterToggle;
+
+            // If subtree is collapsed, don't add children to the visible collection
+            // but still wire up callbacks for all children (for when they're expanded later)
+            if (node.IsSubtreeCollapsed)
             {
-                CollectAllNodes(child, collection);
+                WireUpCallbacksRecursive(node);
+                return;
+            }
+            foreach (var child in node.VisibleChildrenForLayout)
+            {
+                CollectAllNodesRecursive(child, list);
             }
         }
+
+        /// <summary>
+        /// Wires up OnSubtreeToggled callbacks for all descendants without adding to collection.
+        /// Used for collapsed subtrees so they can be expanded later.
+        /// </summary>
+        private void WireUpCallbacksRecursive(PlanNodeViewModel node)
+        {
+            foreach (var child in node.Children)
+            {
+                child.OnSubtreeToggled = RefreshLayoutAfterToggle;
+                WireUpCallbacksRecursive(child);
+            }
+        }
+
+        /// <summary>
+        /// Refreshes the layout after a subtree collapse/expand toggle.
+        /// Called by PlanNodeViewModel.OnSubtreeToggled callback.
+        /// </summary>
+        private void RefreshLayoutAfterToggle()
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            if (RootNode == null)
+                return;
+
+            // Rebuild the AllNodes collection respecting collapsed state using batch operations
+            var collectSw = System.Diagnostics.Stopwatch.StartNew();
+            var nodeList = CollectAllNodesAsList(RootNode);
+            AllNodes.IsNotifying = false;
+            AllNodes.Clear();
+            AllNodes.AddRange(nodeList);
+            AllNodes.IsNotifying = true;
+            Log.Debug(">>> PERF Toggle: CollectAllNodes took {ElapsedMs}ms", collectSw.ElapsedMilliseconds);
+
+            // Recalculate layout for the new visible tree
+            var layoutSw = System.Diagnostics.Stopwatch.StartNew();
+            CalculateLayout();
+            Log.Debug(">>> PERF Toggle: CalculateLayout took {ElapsedMs}ms", layoutSw.ElapsedMilliseconds);
+
+            // Notify UI that AllNodes has changed (single refresh notification)
+            AllNodes.Refresh();
+            NotifyOfPropertyChange(nameof(AllNodes));
+            Log.Debug(">>> PERF Toggle: Total RefreshLayoutAfterToggle took {ElapsedMs}ms", sw.ElapsedMilliseconds);
+        }
+
+        // Cache for subtree width calculations during layout - cleared at start of each layout pass
+        private Dictionary<PlanNodeViewModel, double> _subtreeWidthCache;
 
         private void CalculateLayout()
         {
@@ -1248,7 +1573,9 @@ namespace DaxStudio.UI.ViewModels
                 return;
             }
 
-            // Simple top-down tree layout with padding
+            var layoutSw = System.Diagnostics.Stopwatch.StartNew();
+
+            // Two-pass tree layout algorithm with overlap correction
             const double horizontalSpacing = 30;
             const double verticalSpacing = 60;
             const double paddingLeft = 150;   // Left margin matching bottom for scroll-and-zoom workflow
@@ -1259,11 +1586,34 @@ namespace DaxStudio.UI.ViewModels
             var levelWidths = new Dictionary<int, double>();
             var levelCounts = new Dictionary<int, int>();
 
-            // Calculate level widths
-            CalculateLevelInfo(RootNode, 0, levelWidths, levelCounts);
+            // Initialize subtree width cache for this layout pass
+            _subtreeWidthCache = new Dictionary<PlanNodeViewModel, double>();
 
-            // Position nodes with initial padding
+            // Calculate level widths
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            CalculateLevelInfo(RootNode, 0, levelWidths, levelCounts);
+            Log.Debug(">>> PERF Layout: CalculateLevelInfo took {ElapsedMs}ms", sw.ElapsedMilliseconds);
+
+            // PASS 1: Initial positioning using subtree width calculations
+            sw.Restart();
             PositionNodes(RootNode, 0, paddingLeft, horizontalSpacing, verticalSpacing, levelCounts, paddingTop);
+            Log.Debug(">>> PERF Layout: PositionNodes took {ElapsedMs}ms", sw.ElapsedMilliseconds);
+
+            // PASS 2+3: Iteratively fix overlaps and re-center parents until stable
+            // This handles cases where re-centering creates new overlaps
+            sw.Restart();
+            const int maxIterations = 10;
+            int actualIterations = 0;
+            for (int iteration = 0; iteration < maxIterations; iteration++)
+            {
+                actualIterations++;
+                bool hadOverlaps = FixLevelOverlaps(horizontalSpacing);
+                RecenterParentsOverChildren();
+
+                if (!hadOverlaps)
+                    break;
+            }
+            Log.Debug(">>> PERF Layout: FixOverlaps+Recenter took {ElapsedMs}ms ({Iterations} iterations)", sw.ElapsedMilliseconds, actualIterations);
 
             // Calculate actual content bounds from all positioned nodes
             double maxX = 0;
@@ -1281,6 +1631,93 @@ namespace DaxStudio.UI.ViewModels
             ActualContentHeight = maxY + paddingBottom;
         }
 
+        /// <summary>
+        /// Pass 2: Detects and fixes overlapping nodes at each level.
+        /// This handles cousin overlaps (same level, different parent) and
+        /// grand-cousin overlaps (nodes from deeply nested subtrees).
+        /// </summary>
+        /// <returns>True if any overlaps were fixed, false if layout is stable.</returns>
+        private bool FixLevelOverlaps(double horizontalSpacing)
+        {
+            bool hadOverlaps = false;
+
+            // Group all nodes by their Y position (level)
+            var nodesByLevel = AllNodes
+                .GroupBy(n => (int)Math.Round(n.Y / 10) * 10) // Round to avoid floating point issues
+                .OrderBy(g => g.Key)
+                .ToList();
+
+            foreach (var levelGroup in nodesByLevel)
+            {
+                // Sort nodes at this level by X position
+                var nodesAtLevel = levelGroup.OrderBy(n => n.X).ToList();
+
+                for (int i = 1; i < nodesAtLevel.Count; i++)
+                {
+                    var prevNode = nodesAtLevel[i - 1];
+                    var currNode = nodesAtLevel[i];
+
+                    // Check for overlap (with small tolerance for floating point)
+                    double minX = prevNode.X + prevNode.Width + horizontalSpacing;
+                    if (currNode.X < minX - 0.5) // 0.5 pixel tolerance
+                    {
+                        // Overlap detected - shift this node and its entire subtree
+                        double shiftAmount = minX - currNode.X;
+                        ShiftSubtree(currNode, shiftAmount);
+                        hadOverlaps = true;
+                    }
+                }
+            }
+
+            return hadOverlaps;
+        }
+
+        /// <summary>
+        /// Shifts a node and all its descendants by the specified amount.
+        /// </summary>
+        private void ShiftSubtree(PlanNodeViewModel node, double shiftX)
+        {
+            node.Position = new Point(node.X + shiftX, node.Y);
+
+            foreach (var child in node.Children)
+            {
+                ShiftSubtree(child, shiftX);
+            }
+        }
+
+        /// <summary>
+        /// Pass 3: Re-centers parent nodes over their children after overlap fixes.
+        /// Works bottom-up to ensure children are in final positions first.
+        /// </summary>
+        private void RecenterParentsOverChildren()
+        {
+            // Process nodes bottom-up by level (deepest first)
+            var nodesByLevel = AllNodes
+                .GroupBy(n => (int)Math.Round(n.Y / 10) * 10)
+                .OrderByDescending(g => g.Key)
+                .ToList();
+
+            foreach (var levelGroup in nodesByLevel)
+            {
+                foreach (var node in levelGroup)
+                {
+                    // Use VisibleChildrenForLayout to respect collapsed subtrees
+                    var visibleChildren = node.VisibleChildrenForLayout.ToList();
+                    if (visibleChildren.Count > 0)
+                    {
+                        // Calculate center of visible children
+                        double firstChildCenter = visibleChildren.First().X + visibleChildren.First().Width / 2;
+                        double lastChildCenter = visibleChildren.Last().X + visibleChildren.Last().Width / 2;
+                        double childrenCenter = (firstChildCenter + lastChildCenter) / 2;
+
+                        // Center parent over children
+                        double newX = childrenCenter - node.Width / 2;
+                        node.Position = new Point(newX, node.Y);
+                    }
+                }
+            }
+        }
+
         private void CalculateLevelInfo(PlanNodeViewModel node, int level,
             Dictionary<int, double> levelWidths, Dictionary<int, int> levelCounts)
         {
@@ -1293,7 +1730,8 @@ namespace DaxStudio.UI.ViewModels
             levelCounts[level]++;
             levelWidths[level] += node.Width;
 
-            foreach (var child in node.Children)
+            // Respect collapsed subtrees
+            foreach (var child in node.VisibleChildrenForLayout)
             {
                 CalculateLevelInfo(child, level + 1, levelWidths, levelCounts);
             }
@@ -1302,24 +1740,49 @@ namespace DaxStudio.UI.ViewModels
         /// <summary>
         /// Calculates the width needed by a subtree (including all descendants).
         /// This is used for compact layout of unbalanced trees.
+        /// Respects collapsed subtrees.
+        /// Uses caching to avoid O(n²) recalculations.
         /// </summary>
         private double CalculateSubtreeWidth(PlanNodeViewModel node, double horizontalSpacing)
         {
-            if (node.Children.Count == 0)
+            // Check cache first
+            if (_subtreeWidthCache != null && _subtreeWidthCache.TryGetValue(node, out var cachedWidth))
             {
-                return node.Width;
+                return cachedWidth;
             }
 
-            // Sum of all children's subtree widths plus spacing between them
-            double totalChildWidth = 0;
-            foreach (var child in node.Children)
+            double result;
+
+            // Use VisibleChildrenForLayout to respect collapsed subtrees
+            // Count first to avoid creating a list if not needed
+            var visibleChildren = node.VisibleChildrenForLayout;
+            var childList = visibleChildren as IList<PlanNodeViewModel> ?? visibleChildren.ToList();
+
+            if (childList.Count == 0)
             {
-                if (totalChildWidth > 0) totalChildWidth += horizontalSpacing;
-                totalChildWidth += CalculateSubtreeWidth(child, horizontalSpacing);
+                result = node.Width;
+            }
+            else
+            {
+                // Sum of all children's subtree widths plus spacing between them
+                double totalChildWidth = 0;
+                foreach (var child in childList)
+                {
+                    if (totalChildWidth > 0) totalChildWidth += horizontalSpacing;
+                    totalChildWidth += CalculateSubtreeWidth(child, horizontalSpacing);
+                }
+
+                // Parent node might be wider than all children combined
+                result = Math.Max(node.Width, totalChildWidth);
             }
 
-            // Parent node might be wider than all children combined
-            return Math.Max(node.Width, totalChildWidth);
+            // Cache the result
+            if (_subtreeWidthCache != null)
+            {
+                _subtreeWidthCache[node] = result;
+            }
+
+            return result;
         }
 
         private double PositionNodes(PlanNodeViewModel node, int level, double xOffset,
@@ -1327,7 +1790,10 @@ namespace DaxStudio.UI.ViewModels
         {
             double y = paddingTop + level * (node.Height + verticalSpacing);
 
-            if (node.Children.Count == 0)
+            // Use VisibleChildrenForLayout to respect collapsed subtrees
+            var visibleChildren = node.VisibleChildrenForLayout.ToList();
+
+            if (visibleChildren.Count == 0)
             {
                 node.Position = new Point(xOffset, y);
                 return xOffset + node.Width + horizontalSpacing;
@@ -1336,7 +1802,7 @@ namespace DaxStudio.UI.ViewModels
             // Calculate total width needed for all children
             double totalChildrenWidth = 0;
             var childWidths = new List<double>();
-            foreach (var child in node.Children)
+            foreach (var child in visibleChildren)
             {
                 var width = CalculateSubtreeWidth(child, horizontalSpacing);
                 childWidths.Add(width);
@@ -1361,16 +1827,13 @@ namespace DaxStudio.UI.ViewModels
             // Position each child with its allocated subtree width
             double childOffset = childStartOffset;
             double maxChildRight = 0;
-            for (int i = 0; i < node.Children.Count; i++)
+            for (int i = 0; i < visibleChildren.Count; i++)
             {
-                var child = node.Children[i];
+                var child = visibleChildren[i];
                 var allocatedWidth = childWidths[i];
 
-                // Center this child within its allocated width
-                var childSubtreeWidth = CalculateSubtreeWidth(child, horizontalSpacing);
-                var childCenterOffset = childOffset + (allocatedWidth - childSubtreeWidth) / 2;
-
-                var rightEdge = PositionNodes(child, level + 1, childCenterOffset, horizontalSpacing, verticalSpacing, levelCounts, paddingTop);
+                // Position child at current offset (allocatedWidth equals child's subtree width)
+                var rightEdge = PositionNodes(child, level + 1, childOffset, horizontalSpacing, verticalSpacing, levelCounts, paddingTop);
                 maxChildRight = Math.Max(maxChildRight, rightEdge);
 
                 childOffset += allocatedWidth + horizontalSpacing;
@@ -1474,6 +1937,7 @@ namespace DaxStudio.UI.ViewModels
         public string Parameters { get; set; }
         public DateTime StartDatetime { get; set; }
         public long TotalDuration { get; set; }
+        public List<TraceStorageEngineEvent> TimingEvents { get; set; }
     }
 
     /// <summary>

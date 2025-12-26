@@ -277,6 +277,7 @@
     <Compile Include="AttachedProperties\ContentControlLineNumberHelper.cs" />
     <Compile Include="AttachedProperties\TriggerDebugTracer.cs" />
     <Compile Include="AttachedProperties\VisibilityAnimation.cs" />
+    <Compile Include="AttachedProperties\CanvasPositionAnimation.cs" />
     <Compile Include="Behaviours\AvalonDockLayoutSerializerBehaviour.cs" />
     <Compile Include="Behaviours\BindableFocusBehaviour.cs" />
     <Compile Include="AttachedProperties\DataSourcePasteHandlerHelper.cs" />

@@ -7,6 +7,7 @@
              xmlns:conv="clr-namespace:DaxStudio.UI.Converters"
              xmlns:cal="clr-namespace:Caliburn.Micro;assembly=Caliburn.Micro.Platform"
              xmlns:local="clr-namespace:DaxStudio.UI.Views"
+             xmlns:attached="clr-namespace:DaxStudio.UI.AttachedProperties"
              mc:Ignorable="d"
              d:DesignHeight="400" d:DesignWidth="800">
     <UserControl.Resources>
@@ -184,6 +185,42 @@
 
                 <Rectangle DockPanel.Dock="Left" Width="1" Fill="{DynamicResource Theme.Brush.Control.Border}" Margin="8,4"/>
 
+                <!-- Expand/Collapse All buttons -->
+                <Button DockPanel.Dock="Left"
+                        Style="{StaticResource TraceButton}"
+                        cal:Message.Attach="[Event Click] = [Action ExpandAll]"
+                        ToolTip="Expand all collapsed subtrees"
+                        IsEnabled="{Binding HasCollapsedNodes}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontWeight="Bold" Margin="0 0 4 0">+</TextBlock>
+                        <TextBlock>Expand All</TextBlock>
+                    </StackPanel>
+                </Button>
+
+                <Button DockPanel.Dock="Left"
+                        Style="{StaticResource TraceButton}"
+                        cal:Message.Attach="[Event Click] = [Action CollapseAll]"
+                        ToolTip="Collapse large subtrees"
+                        IsEnabled="{Binding HasExpandedCollapsibleNodes}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontWeight="Bold" Margin="0 0 4 0">−</TextBlock>
+                        <TextBlock>Collapse All</TextBlock>
+                    </StackPanel>
+                </Button>
+
+                <Button DockPanel.Dock="Left"
+                        Style="{StaticResource TraceButton}"
+                        cal:Message.Attach="[Event Click] = [Action ExpandIssueNodes]"
+                        ToolTip="Expand paths to nodes with issues"
+                        IsEnabled="{Binding HasIssues}">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="10" Height="10" Fill="#FFD700" Stroke="#FF8C00" StrokeThickness="1" Margin="0 0 4 0"/>
+                        <TextBlock>Show Issues</TextBlock>
+                    </StackPanel>
+                </Button>
+
+                <Rectangle DockPanel.Dock="Left" Width="1" Fill="{DynamicResource Theme.Brush.Control.Border}" Margin="8,4"/>
+
                 <!-- Export and Info buttons -->
                 <Button DockPanel.Dock="Left"
                         Style="{StaticResource TraceButton}"
@@ -243,8 +280,8 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <!-- Use VisibleChildren to exclude collapsed child nodes from edge rendering -->
-                                    <ItemsControl ItemsSource="{Binding VisibleChildren}">
+                                    <!-- Use VisibleChildrenForLayout to exclude collapsed subtrees from edge rendering -->
+                                    <ItemsControl ItemsSource="{Binding VisibleChildrenForLayout}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <Canvas/>
@@ -349,7 +386,8 @@
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
 
                                             <!-- Operation name with optional detail (name bold, detail normal) -->
@@ -443,6 +481,27 @@
                                                        Margin="0,-4,-2,0"
                                                        Visibility="{Binding HasIssues, Converter={StaticResource BoolToCollapsedConverter}}"
                                                        ToolTip="This node has performance issues"/>
+
+                                            <!-- Row 3: Subtree expand/collapse toggle button -->
+                                            <Border Grid.Row="3"
+                                                    HorizontalAlignment="Center"
+                                                    Margin="0,4,0,-8"
+                                                    Visibility="{Binding CanToggleSubtree, Converter={StaticResource BoolToCollapsedConverter}}"
+                                                    Background="{DynamicResource Theme.Brush.Content.Back}"
+                                                    BorderBrush="{DynamicResource Theme.Brush.Control.Border}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Padding="6,2"
+                                                    Cursor="Hand"
+                                                    ToolTip="{Binding SubtreeToggleTooltip}"
+                                                    cal:Action.TargetWithoutContext="{Binding}"
+                                                    cal:Message.Attach="[Event MouseLeftButtonDown] = [Action ToggleSubtree]">
+                                                <TextBlock Text="{Binding SubtreeToggleSymbol}"
+                                                           FontSize="12"
+                                                           FontWeight="Bold"
+                                                           Foreground="{DynamicResource Theme.Brush.Default.Fore}"
+                                                           HorizontalAlignment="Center"/>
+                                            </Border>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>

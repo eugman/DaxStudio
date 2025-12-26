@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Navigation;
+using DaxStudio.UI.Utils;
 using DaxStudio.UI.ViewModels;
 
 namespace DaxStudio.UI.Views
@@ -141,8 +142,29 @@ namespace DaxStudio.UI.Views
                 var vm = DataContext as VisualQueryPlanViewModel;
                 if (vm != null)
                 {
+                    // Get the current mouse position relative to the ScrollViewer
+                    var mousePos = e.GetPosition(PlanScrollViewer);
+                    var oldZoom = vm.ZoomLevel;
+
+                    // Apply zoom
                     var zoomDelta = e.Delta / 1200.0;
                     vm.ZoomLevel += zoomDelta;
+                    var newZoom = vm.ZoomLevel;
+
+                    // Calculate new scroll position to keep the same content point under the cursor
+                    var (newScrollX, newScrollY) = ZoomHelper.CalculateZoomScrollOffsets(
+                        mousePos.X,
+                        mousePos.Y,
+                        PlanScrollViewer.HorizontalOffset,
+                        PlanScrollViewer.VerticalOffset,
+                        oldZoom,
+                        newZoom,
+                        PlanScrollViewer.ScrollableWidth,
+                        PlanScrollViewer.ScrollableHeight);
+
+                    PlanScrollViewer.ScrollToHorizontalOffset(newScrollX);
+                    PlanScrollViewer.ScrollToVerticalOffset(newScrollY);
+
                     e.Handled = true; // Prevent base class from scaling the whole control
                 }
             }

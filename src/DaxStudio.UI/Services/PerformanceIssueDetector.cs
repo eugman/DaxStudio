@@ -65,8 +65,90 @@ namespace DaxStudio.UI.Services
                 issues.AddRange(nodeIssues);
             }
 
+            // Dedupe ExcessiveMaterialization: keep only leaf-most node per row count in path
+            issues = DedupeExcessiveMaterializationIssues(issues, plan);
+
             Log.Debug("PerformanceIssueDetector: Detected {IssueCount} issues in plan", issues.Count);
             return issues;
+        }
+
+        /// <summary>
+        /// Removes duplicate ExcessiveMaterialization issues where an ancestor has the same row count.
+        /// Only the leaf-most node per row count in a path is kept.
+        /// </summary>
+        private List<PerformanceIssue> DedupeExcessiveMaterializationIssues(List<PerformanceIssue> issues, EnrichedQueryPlan plan)
+        {
+            // Group materialization issues by row count
+            var materializationIssues = issues
+                .Where(i => i.IssueType == IssueType.ExcessiveMaterialization && i.MetricValue.HasValue)
+                .ToList();
+
+            if (materializationIssues.Count <= 1)
+                return issues;
+
+            // Build node lookup for quick access
+            var nodeById = plan.AllNodes.ToDictionary(n => n.NodeId);
+
+            // For each materialization issue, check if any descendant has the same row count
+            var issuesToRemove = new HashSet<PerformanceIssue>();
+
+            foreach (var issue in materializationIssues)
+            {
+                if (issuesToRemove.Contains(issue))
+                    continue;
+
+                var rowCount = issue.MetricValue.Value;
+
+                // Find all other issues with same row count
+                var sameRowCountIssues = materializationIssues
+                    .Where(i => i != issue && i.MetricValue == rowCount)
+                    .ToList();
+
+                if (sameRowCountIssues.Count == 0)
+                    continue;
+
+                // Check if any of them is a descendant of this issue's node
+                if (!nodeById.TryGetValue(issue.AffectedNodeId, out var thisNode))
+                    continue;
+
+                foreach (var otherIssue in sameRowCountIssues)
+                {
+                    if (!nodeById.TryGetValue(otherIssue.AffectedNodeId, out var otherNode))
+                        continue;
+
+                    // Check if otherNode is a descendant of thisNode
+                    if (IsDescendant(otherNode, thisNode))
+                    {
+                        // otherNode is a descendant with same row count - remove this (ancestor) issue
+                        issuesToRemove.Add(issue);
+                        Log.Debug("DedupeExcessiveMaterialization: Removing issue for node {AncestorId} ({RowCount} rows) - descendant {DescendantId} has same count",
+                            issue.AffectedNodeId, rowCount, otherIssue.AffectedNodeId);
+                        break;
+                    }
+                }
+            }
+
+            if (issuesToRemove.Count > 0)
+            {
+                return issues.Where(i => !issuesToRemove.Contains(i)).ToList();
+            }
+
+            return issues;
+        }
+
+        /// <summary>
+        /// Checks if candidateDescendant is a descendant of potentialAncestor.
+        /// </summary>
+        private bool IsDescendant(EnrichedPlanNode candidateDescendant, EnrichedPlanNode potentialAncestor)
+        {
+            var current = candidateDescendant.Parent;
+            while (current != null)
+            {
+                if (current.NodeId == potentialAncestor.NodeId)
+                    return true;
+                current = current.Parent;
+            }
+            return false;
         }
 
         /// <summary>
