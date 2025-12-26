@@ -92,6 +92,10 @@ namespace DaxStudio.UI.ViewModels
 
                 var displayName = DaxOperatorDictionary.GetDisplayName(opName);
 
+                // Add count suffix for chained arithmetic operators
+                if (HasChainedOperators)
+                    return $"{displayName} ({ChainedOperatorCount}x)";
+
                 // Add depth indicator for nested spool chains
                 if (IsNestedSpoolChain)
                     return $"{displayName} (×{NestedSpoolDepth})";
@@ -806,6 +810,7 @@ namespace DaxStudio.UI.ViewModels
 
         /// <summary>
         /// Severity level based on row count thresholds.
+        /// 100K+ = Warning (yellow), 1M+ = Critical (red)
         /// </summary>
         public string RowCountSeverity
         {
@@ -815,11 +820,11 @@ namespace DaxStudio.UI.ViewModels
                     return "None";
 
                 var records = _node.Records.Value;
-                if (records < 10_000)
-                    return "Fine";      // Green - acceptable
                 if (records < 100_000)
-                    return "Warning";   // Yellow - concerning
-                return "Critical";      // Red - excessive materialization
+                    return "Fine";      // Green - acceptable
+                if (records < 1_000_000)
+                    return "Warning";   // Yellow - 100K+ is concerning
+                return "Critical";      // Red - 1M+ is excessive materialization
             }
         }
 
@@ -1114,6 +1119,9 @@ namespace DaxStudio.UI.ViewModels
         #endregion
 
         #region Query Plan Properties (Column Lists, BlankRow, Table ID)
+
+        // Set to true to enable verbose BuildTree logging (causes significant performance overhead)
+        private const bool VerboseBuildTreeLogging = false;
 
         // Regex patterns for extracting column list properties
         // Format: PropertyName(indices)(columns) e.g., RequiredCols(0, 1)('T'[Col1], 'T'[Col2])
@@ -1713,7 +1721,7 @@ namespace DaxStudio.UI.ViewModels
                 return string.Empty;
 
             // DEBUG: Log raw operation for debugging - REMOVE BEFORE RELEASE
-            Serilog.Log.Debug(">>> GetOperationName: Input='{Op}'", op.Substring(0, Math.Min(100, op.Length)));
+            if (VerboseBuildTreeLogging) Serilog.Log.Debug(">>> GetOperationName: Input='{Op}'", op.Substring(0, Math.Min(100, op.Length)));
 
             // Check if this is a column reference format: 'Table'[Column]: Operator
             // These start with a single quote
@@ -1729,7 +1737,7 @@ namespace DaxStudio.UI.ViewModels
                     // Get the operator name (first word)
                     var spaceIndex = afterColon.IndexOf(' ');
                     var result = spaceIndex > 0 ? afterColon.Substring(0, spaceIndex) : afterColon;
-                    Serilog.Log.Debug(">>> GetOperationName: Column reference format, extracted='{Result}'", result);
+                    if (VerboseBuildTreeLogging) Serilog.Log.Debug(">>> GetOperationName: Column reference format, extracted='{Result}'", result);
                     return result;
                 }
             }
@@ -1745,7 +1753,7 @@ namespace DaxStudio.UI.ViewModels
                 {
                     // Space comes before colon, use space as delimiter
                     var result = op.Substring(0, firstSpace);
-                    Serilog.Log.Debug(">>> GetOperationName: Space before colon, extracted='{Result}'", result);
+                    if (VerboseBuildTreeLogging) Serilog.Log.Debug(">>> GetOperationName: Space before colon, extracted='{Result}'", result);
                     return result;
                 }
 
@@ -1761,14 +1769,14 @@ namespace DaxStudio.UI.ViewModels
                     {
                         // Extract the actual operator (between first and second colon)
                         var operatorName = afterFirstColon.Substring(0, secondColonIdx).Trim();
-                        Serilog.Log.Debug(">>> GetOperationName: Variable prefix format, var='{Var}', operator='{Op}'", beforeColon, operatorName);
+                        if (VerboseBuildTreeLogging) Serilog.Log.Debug(">>> GetOperationName: Variable prefix format, var='{Var}', operator='{Op}'", beforeColon, operatorName);
                         return operatorName;
                     }
                 }
 
                 // Colon is the delimiter
                 var colonResult = op.Substring(0, colonIdx);
-                Serilog.Log.Debug(">>> GetOperationName: Colon format, extracted='{Result}'", colonResult);
+                if (VerboseBuildTreeLogging) Serilog.Log.Debug(">>> GetOperationName: Colon format, extracted='{Result}'", colonResult);
                 return colonResult;
             }
 
@@ -1777,11 +1785,11 @@ namespace DaxStudio.UI.ViewModels
             if (idx > 0)
             {
                 var result = op.Substring(0, idx);
-                Serilog.Log.Debug(">>> GetOperationName: Space format, extracted='{Result}'", result);
+                if (VerboseBuildTreeLogging) Serilog.Log.Debug(">>> GetOperationName: Space format, extracted='{Result}'", result);
                 return result;
             }
 
-            Serilog.Log.Debug(">>> GetOperationName: No delimiter, returning full='{Op}'", op);
+            if (VerboseBuildTreeLogging) Serilog.Log.Debug(">>> GetOperationName: No delimiter, returning full='{Op}'", op);
             return op;
         }
 
@@ -2066,9 +2074,150 @@ namespace DaxStudio.UI.ViewModels
             IsCollapsed ? Enumerable.Empty<PlanNodeViewModel>() : Children;
 
         /// <summary>
+        /// Children that are visible for layout calculation (respects collapsed state).
+        /// Used by layout algorithms to only position visible nodes.
+        /// </summary>
+        public IEnumerable<PlanNodeViewModel> VisibleChildrenForLayout =>
+            (IsCollapsed || IsSubtreeCollapsed) ? Enumerable.Empty<PlanNodeViewModel>() : Children;
+
+        /// <summary>
         /// Whether this node has collapsed children.
         /// </summary>
         public bool HasCollapsedChildren => IsCollapsed && CollapsedChildren.Count > 0;
+
+        /// <summary>
+        /// Whether this node's subtree is collapsed (user can expand/collapse).
+        /// </summary>
+        private bool _isSubtreeCollapsed;
+        public bool IsSubtreeCollapsed
+        {
+            get => _isSubtreeCollapsed;
+            set
+            {
+                if (_isSubtreeCollapsed != value)
+                {
+                    _isSubtreeCollapsed = value;
+                    NotifyOfPropertyChange();
+                    NotifyOfPropertyChange(nameof(VisibleChildrenForLayout));
+                    InvalidateSubtreeWidth();
+                    OnSubtreeToggled?.Invoke();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether this node can have its subtree toggled.
+        /// Only show collapse button for nodes with 2+ direct children AND subtree width >= 20.
+        /// </summary>
+        public bool CanToggleSubtree => Children.Count > 1 && SubtreeWidth >= 20;
+
+        /// <summary>
+        /// Callback invoked when the subtree is toggled (collapsed/expanded).
+        /// Used by parent ViewModel to refresh layout.
+        /// </summary>
+        public System.Action OnSubtreeToggled { get; set; }
+
+        /// <summary>
+        /// Symbol to display on the collapse/expand button.
+        /// </summary>
+        public string SubtreeToggleSymbol => IsSubtreeCollapsed ? "+" : "−";
+
+        /// <summary>
+        /// Toggles the subtree collapsed state.
+        /// </summary>
+        public void ToggleSubtree()
+        {
+            IsSubtreeCollapsed = !IsSubtreeCollapsed;
+        }
+
+        /// <summary>
+        /// Count of chained operators folded into this node (for arithmetic chains like Add+Add+Add).
+        /// </summary>
+        public int ChainedOperatorCount { get; set; } = 1;
+
+        /// <summary>
+        /// Whether this node has chained operators folded into it.
+        /// </summary>
+        public bool HasChainedOperators => ChainedOperatorCount > 1;
+
+        /// <summary>
+        /// Cached subtree width for layout calculations.
+        /// </summary>
+        private int? _cachedSubtreeWidth;
+
+        /// <summary>
+        /// Count of leaf nodes in the subtree (used for collapse logic).
+        /// Leaf node = 1, parent = sum of children's widths.
+        /// </summary>
+        public int SubtreeWidth
+        {
+            get
+            {
+                if (!_cachedSubtreeWidth.HasValue)
+                {
+                    _cachedSubtreeWidth = CalculateSubtreeWidth();
+                }
+                return _cachedSubtreeWidth.Value;
+            }
+        }
+
+        /// <summary>
+        /// Count of visible leaf nodes in the subtree (respects collapsed state).
+        /// </summary>
+        public int VisibleSubtreeWidth
+        {
+            get
+            {
+                if (IsSubtreeCollapsed)
+                    return 1; // Collapsed subtree counts as 1
+                return CalculateVisibleSubtreeWidth();
+            }
+        }
+
+        /// <summary>
+        /// Invalidates the cached subtree width, causing recalculation.
+        /// </summary>
+        public void InvalidateSubtreeWidth()
+        {
+            _cachedSubtreeWidth = null;
+            Parent?.InvalidateSubtreeWidth();
+        }
+
+        /// <summary>
+        /// Expands the path from this node to the root.
+        /// </summary>
+        public void ExpandPathToRoot()
+        {
+            IsSubtreeCollapsed = false;
+            Parent?.ExpandPathToRoot();
+        }
+
+        private int CalculateSubtreeWidth()
+        {
+            if (Children.Count == 0)
+                return 1; // Leaf node counts as 1
+
+            int width = 0;
+            foreach (var child in Children)
+            {
+                width += child.SubtreeWidth;
+            }
+            return width;
+        }
+
+        private int CalculateVisibleSubtreeWidth()
+        {
+            var visibleChildren = VisibleChildrenForLayout.ToList();
+            if (visibleChildren.Count == 0)
+                return 1; // Leaf or all-collapsed counts as 1
+
+            int width = 0;
+            foreach (var child in visibleChildren)
+            {
+                width += child.VisibleSubtreeWidth;
+            }
+            return width;
+        }
 
         /// <summary>
         /// Operators that represent comparisons and can be collapsed with their operands.
@@ -2295,21 +2444,21 @@ namespace DaxStudio.UI.ViewModels
                 var opName = GetOperatorNameFromString(node.Operation);
                 if (IsFilterOperator(opName))
                 {
-                    Log.Debug(">>> BuildTree: Found Filter node {NodeId}, opName={OpName}", node.NodeId, opName);
+                    if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Found Filter node {NodeId}, opName={OpName}", node.NodeId, opName);
 
                     // Build the predicate expression for display
                     var predicateExpr = BuildFilterPredicateExpression(node, plan.AllNodes);
-                    Log.Debug(">>> BuildTree: PredicateExpr for node {NodeId} = {Expr}", node.NodeId, predicateExpr ?? "(null)");
+                    if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: PredicateExpr for node {NodeId} = {Expr}", node.NodeId, predicateExpr ?? "(null)");
 
                     if (!string.IsNullOrEmpty(predicateExpr))
                     {
                         filterPredicateExpressions[node.NodeId] = predicateExpr;
-                        Log.Debug(">>> BuildTree: Stored predicate for node {NodeId}", node.NodeId);
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Stored predicate for node {NodeId}", node.NodeId);
                     }
 
                     // Collect all predicate node IDs to fold
                     var predicateNodeIds = CollectFilterPredicateNodeIds(node, plan.AllNodes);
-                    Log.Debug(">>> BuildTree: Folding {Count} predicate nodes for Filter {NodeId}", predicateNodeIds.Count, node.NodeId);
+                    if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding {Count} predicate nodes for Filter {NodeId}", predicateNodeIds.Count, node.NodeId);
                     foreach (var id in predicateNodeIds)
                     {
                         foldedNodeIds.Add(id);
@@ -2332,14 +2481,14 @@ namespace DaxStudio.UI.ViewModels
                     var logOp = logOpMatch.Groups[1].Value;
                     if (ComparisonOperators.Contains(logOp))
                     {
-                        Log.Debug(">>> BuildTree: Found Physical comparison node {NodeId} with LogOp={LogOp}", node.NodeId, logOp);
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Found Physical comparison node {NodeId} with LogOp={LogOp}", node.NodeId, logOp);
 
                         // Build predicate expression from this node and its descendants
                         var predicateExpr = BuildPredicateFromPhysicalComparison(node, logOp, plan.AllNodes);
                         if (!string.IsNullOrEmpty(predicateExpr))
                         {
                             filterPredicateExpressions[node.NodeId] = predicateExpr;
-                            Log.Debug(">>> BuildTree: Stored physical predicate for node {NodeId}: {Expr}", node.NodeId, predicateExpr);
+                            if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Stored physical predicate for node {NodeId}: {Expr}", node.NodeId, predicateExpr);
                         }
 
                         // Fold comparison child nodes (GreaterThan, ColValue, Constant, etc.)
@@ -2355,7 +2504,7 @@ namespace DaxStudio.UI.ViewModels
                                 foldedNodeIds.Add(child.NodeId);
                                 // Also fold descendants of the comparison
                                 FoldDescendants(child, plan.AllNodes, foldedNodeIds);
-                                Log.Debug(">>> BuildTree: Folding comparison child {ChildId} ({ChildOp})", child.NodeId, childOpName);
+                                if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding comparison child {ChildId} ({ChildOp})", child.NodeId, childOpName);
                             }
                         }
                     }
@@ -2389,61 +2538,153 @@ namespace DaxStudio.UI.ViewModels
                 var opName = GetOperatorNameFromString(node.Operation);
                 var normalizedOpName = NormalizeOperatorForGrouping(opName);
 
-                // Match Spool_Iterator, Spool_Iterator<...>, or SpoolLookup (with or without #N suffix)
+                // Match various spool parent types that can fold children
                 var isSpoolIterator = normalizedOpName == "Spool_Iterator" || normalizedOpName.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
                 var isSpoolLookup = normalizedOpName == "SpoolLookup";
+                var isMultiValuedHashLookup = normalizedOpName == "Spool_MultiValuedHashLookup";
+                var isUniqueHashLookup = normalizedOpName == "Spool_UniqueHashLookup";
+                var isSpoolParent = isSpoolIterator || isSpoolLookup || isMultiValuedHashLookup || isUniqueHashLookup;
 
-                if (isSpoolIterator || isSpoolLookup)
+                if (isSpoolParent)
                 {
-                    // Extract column from IterCols (for Spool_Iterator) or LookupCols (for SpoolLookup)
+                    // Extract column from IterCols or LookupCols
                     string columnName = null;
-                    if (isSpoolIterator)
-                    {
-                        var iterColsMatch = iterColsPattern.Match(node.Operation ?? "");
-                        columnName = iterColsMatch.Success ? iterColsMatch.Groups[1].Value : null;
-                    }
-                    else if (isSpoolLookup)
+                    var iterColsMatch = iterColsPattern.Match(node.Operation ?? "");
+                    if (iterColsMatch.Success)
+                        columnName = iterColsMatch.Groups[1].Value;
+                    else
                     {
                         var lookupColsMatch = lookupColsPattern.Match(node.Operation ?? "");
-                        columnName = lookupColsMatch.Success ? lookupColsMatch.Groups[1].Value : null;
+                        if (lookupColsMatch.Success)
+                            columnName = lookupColsMatch.Groups[1].Value;
                     }
 
-                    // Find spool children (AggregationSpool, ProjectionSpool, etc.)
+                    // Find children to fold (AggregationSpool, ProjectionSpool, Extend_Lookup, etc.)
                     var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId).ToList();
                     foreach (var child in children)
                     {
                         if (foldedNodeIds.Contains(child.NodeId))
                             continue;
 
+                        // CRITICAL: Never fold across engine boundaries (SE↔FE transitions are visually important)
+                        if (child.EngineType != EngineType.Unknown && node.EngineType != EngineType.Unknown &&
+                            child.EngineType != node.EngineType)
+                            continue;
+
                         var childOp = child.Operation ?? "";
                         var childOpName = GetOperatorNameFromString(childOp);
 
-                        // Check if child is a spool type (contains "Spool<" or ends with "Spool") but not Spool_Iterator/SpoolLookup
+                        // Check if child is a spool type that should fold
                         var isSpoolType = (childOpName.Contains("Spool<") || childOpName.EndsWith("Spool", StringComparison.OrdinalIgnoreCase)) &&
                                           !childOpName.StartsWith("Spool_Iterator", StringComparison.Ordinal) &&
                                           childOpName != "SpoolLookup";
-                        if (isSpoolType)
+
+                        // Also fold Extend_Lookup into spool parents
+                        var isExtendLookup = childOpName == "Extend_Lookup";
+
+                        if (isSpoolType || isExtendLookup)
                         {
                             // Map spool type to simplified description
-                            var simplifiedType = GetSimplifiedSpoolType(childOpName);
+                            var simplifiedType = isSpoolType ? GetSimplifiedSpoolType(childOpName) : "Extend";
 
                             // Combine with column name if available
                             var spoolInfo = !string.IsNullOrEmpty(columnName)
                                 ? $"{simplifiedType} {columnName}"
                                 : simplifiedType;
 
-                            spoolTypeInfos[node.NodeId] = spoolInfo;
+                            if (isSpoolType)
+                                spoolTypeInfos[node.NodeId] = spoolInfo;
                             foldedNodeIds.Add(child.NodeId);
                             AddFoldedOp(node.NodeId, child.Operation);
-                            Log.Debug(">>> BuildTree: Folding spool child {ChildId} ({SpoolType}) into {ParentOp} {ParentId}, display: {SpoolInfo}",
-                                child.NodeId, childOpName, opName, node.NodeId, spoolInfo);
-                            break; // Only fold first spool child
+                            if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding child {ChildId} ({ChildOp}) into {ParentOp} {ParentId}",
+                                child.NodeId, childOpName, opName, node.NodeId);
                         }
                     }
                 }
             }
 
-            // Fifth pass: Extract column info for Scan_Vertipaq, DirectQueryResult, and other operators
+            // Fifth pass: Fold chained arithmetic operators (Add→Add→Add becomes "Add (3x)")
+            // Iterate until no more folding possible (for deep chains)
+            var chainedOperatorCounts = new Dictionary<int, int>();
+            var arithmeticOperators = new HashSet<string> { "Add", "Subtract", "Multiply", "Divide", "Min", "Max", "Coalesce" };
+
+            Log.Debug(">>> BuildTree: Starting arithmetic folding. Arithmetic operators: {Ops}", string.Join(", ", arithmeticOperators));
+            bool arithmeticProgress;
+            do
+            {
+                arithmeticProgress = false;
+                foreach (var node in plan.AllNodes)
+                {
+                    if (foldedNodeIds.Contains(node.NodeId))
+                        continue;
+
+                    var opName = GetOperatorNameFromString(node.Operation);
+                    if (!arithmeticOperators.Contains(opName))
+                        continue;
+
+                    // Find non-folded children
+                    var children = plan.AllNodes
+                        .Where(n => n.Parent?.NodeId == node.NodeId && !foldedNodeIds.Contains(n.NodeId))
+                        .ToList();
+
+                    // Find children with the same operator type
+                    var sameOpChildren = children
+                        .Where(c => GetOperatorNameFromString(c.Operation) == opName)
+                        .ToList();
+
+                    // If exactly ONE child has the same operator, fold it (even if there are other children)
+                    if (sameOpChildren.Count == 1)
+                    {
+                        var child = sameOpChildren[0];
+                        var childOpName = GetOperatorNameFromString(child.Operation);
+
+                        if (childOpName == opName)
+                        {
+                            // Get existing count from child if it was already part of a chain
+                            var childCount = chainedOperatorCounts.ContainsKey(child.NodeId) ? chainedOperatorCounts[child.NodeId] : 1;
+                            var parentCount = chainedOperatorCounts.ContainsKey(node.NodeId) ? chainedOperatorCounts[node.NodeId] : 1;
+                            var newCount = parentCount + childCount;
+
+                            // Update count on parent
+                            chainedOperatorCounts[node.NodeId] = newCount;
+                            if (chainedOperatorCounts.ContainsKey(child.NodeId))
+                                chainedOperatorCounts.Remove(child.NodeId);
+
+                            // Fold the child
+                            foldedNodeIds.Add(child.NodeId);
+                            AddFoldedOp(node.NodeId, child.Operation);
+
+                            // Promote grandchildren to be children of this node
+                            foreach (var grandchild in plan.AllNodes.Where(n => n.Parent?.NodeId == child.NodeId))
+                            {
+                                grandchild.Parent = node;
+                            }
+
+                            arithmeticProgress = true;
+                            if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding chained {Op} child {ChildId} into parent {ParentId}, count now {Count}",
+                                opName, child.NodeId, node.NodeId, newCount);
+                        }
+                    }
+                }
+            } while (arithmeticProgress);
+
+            // Fifth-B pass: Fold SingletonTable into parent (always folds)
+            foreach (var node in plan.AllNodes)
+            {
+                if (foldedNodeIds.Contains(node.NodeId))
+                    continue;
+
+                var opName = GetOperatorNameFromString(node.Operation);
+                if (opName == "SingletonTable" && node.Parent != null)
+                {
+                    foldedNodeIds.Add(node.NodeId);
+                    AddFoldedOp(node.Parent.NodeId, node.Operation);
+                    if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding SingletonTable {NodeId} into parent {ParentId}",
+                        node.NodeId, node.Parent.NodeId);
+                }
+            }
+
+            // Sixth pass: Extract column info for Scan_Vertipaq, DirectQueryResult, and other operators
             var scanColumnInfos = new Dictionary<int, string>();
             var directQueryFieldsInfos = new Dictionary<int, string>();
             var dependOnColsInfos = new Dictionary<int, string>();
@@ -2483,7 +2724,7 @@ namespace DaxStudio.UI.ViewModels
                             var colNames = columnMatches.Cast<Match>().Select(m => $"[{m.Groups[2].Value}]");
                             scanColumnInfos[node.NodeId] = $"'{tableName}': {string.Join(", ", colNames)}";
                         }
-                        Log.Debug(">>> BuildTree: Extracted scan column(s) {Column} for node {NodeId}", scanColumnInfos.ContainsKey(node.NodeId) ? scanColumnInfos[node.NodeId] : "(none)", node.NodeId);
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Extracted scan column(s) {Column} for node {NodeId}", scanColumnInfos.ContainsKey(node.NodeId) ? scanColumnInfos[node.NodeId] : "(none)", node.NodeId);
                     }
                 }
                 else if (opName == "DirectQueryResult")
@@ -2507,7 +2748,7 @@ namespace DaxStudio.UI.ViewModels
                             var colNames = columnMatches.Cast<Match>().Select(m => $"[{m.Groups[2].Value}]");
                             directQueryFieldsInfos[node.NodeId] = $"'{tableName}': {string.Join(", ", colNames)}";
                         }
-                        Log.Debug(">>> BuildTree: Extracted DirectQuery fields {Fields} for node {NodeId}", directQueryFieldsInfos.ContainsKey(node.NodeId) ? directQueryFieldsInfos[node.NodeId] : "(none)", node.NodeId);
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Extracted DirectQuery fields {Fields} for node {NodeId}", directQueryFieldsInfos.ContainsKey(node.NodeId) ? directQueryFieldsInfos[node.NodeId] : "(none)", node.NodeId);
                     }
                 }
 
@@ -2532,7 +2773,7 @@ namespace DaxStudio.UI.ViewModels
                             var colNames = columnMatches.Cast<Match>().Select(m => $"[{m.Groups[2].Value}]");
                             dependOnColsInfos[node.NodeId] = $"'{tableName}': {string.Join(", ", colNames)}";
                         }
-                        Log.Debug(">>> BuildTree: Extracted DependOnCols {Cols} for node {NodeId}", dependOnColsInfos.ContainsKey(node.NodeId) ? dependOnColsInfos[node.NodeId] : "(none)", node.NodeId);
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Extracted DependOnCols {Cols} for node {NodeId}", dependOnColsInfos.ContainsKey(node.NodeId) ? dependOnColsInfos[node.NodeId] : "(none)", node.NodeId);
                     }
                 }
             }
@@ -2557,7 +2798,7 @@ namespace DaxStudio.UI.ViewModels
                     {
                         foldedNodeIds.Add(child.NodeId);
                         AddFoldedOp(node.NodeId, child.Operation);
-                        Log.Debug(">>> BuildTree: Folding identical child {ChildId} into parent {ParentId}: {Op}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding identical child {ChildId} into parent {ParentId}: {Op}",
                             child.NodeId, node.NodeId, GetOperatorNameFromString(node.Operation));
                     }
                 }
@@ -2588,7 +2829,7 @@ namespace DaxStudio.UI.ViewModels
                             {
                                 var column = match.Groups[1].Value;
                                 cacheColumnInfos[node.NodeId] = column;
-                                Log.Debug(">>> BuildTree: Inferred cache column {Column} for node {NodeId} from ancestor {AncestorId}",
+                                if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Inferred cache column {Column} for node {NodeId} from ancestor {AncestorId}",
                                     column, node.NodeId, ancestor.NodeId);
                                 break;
                             }
@@ -2703,7 +2944,7 @@ namespace DaxStudio.UI.ViewModels
                                     spoolTypeInfos[node.NodeId] = childSpoolInfo;
                                 }
 
-                                Log.Debug(">>> BuildTree: Folded nested Spool_Iterator {ChildId} into {ParentId}, row range {Min}-{Max}, depth now {Depth}",
+                                if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folded nested Spool_Iterator {ChildId} into {ParentId}, row range {Min}-{Max}, depth now {Depth}",
                                     child.NodeId, node.NodeId, newMin, newMax, nestedSpoolDepths[node.NodeId]);
 
                                 madeProgress = true;
@@ -2740,7 +2981,7 @@ namespace DaxStudio.UI.ViewModels
                         typeCoercionInfos[child.NodeId] = opName;
                         AddFoldedOp(child.NodeId, node.Operation);
 
-                        Log.Debug(">>> BuildTree: Folded Variant node {VariantId} ({OpName}) down into child {ChildId}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folded Variant node {VariantId} ({OpName}) down into child {ChildId}",
                             node.NodeId, opName, child.NodeId);
                     }
                 }
@@ -2807,7 +3048,7 @@ namespace DaxStudio.UI.ViewModels
                     spoolTypeInfos[node.NodeId] = childSpoolInfo;
                 }
 
-                Log.Debug(">>> BuildTree: Folded Spool_Iterator {ChildId} into SpoolLookup {ParentId}, row range {Min}-{Max}",
+                if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folded Spool_Iterator {ChildId} into SpoolLookup {ParentId}, row range {Min}-{Max}",
                     child.NodeId, node.NodeId, minRecords, maxRecords);
             }
 
@@ -2858,7 +3099,7 @@ namespace DaxStudio.UI.ViewModels
                         collapsedProxyInfos.Remove(node.NodeId);
                     }
 
-                    Log.Debug(">>> BuildTree: Folded Proxy node {ProxyId} ({OpName}) into child {ChildId}",
+                    if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folded Proxy node {ProxyId} ({OpName}) into child {ChildId}",
                         node.NodeId, opName, child.NodeId);
 
                     madeProgress = true;
@@ -2866,7 +3107,7 @@ namespace DaxStudio.UI.ViewModels
             } while (madeProgress);
 
             // Create ViewModels for non-folded nodes only
-            Log.Debug(">>> BuildTree: filterPredicateExpressions has {Count} entries", filterPredicateExpressions.Count);
+            if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: filterPredicateExpressions has {Count} entries", filterPredicateExpressions.Count);
             foreach (var node in plan.AllNodes)
             {
                 if (!foldedNodeIds.Contains(node.NodeId))
@@ -2877,7 +3118,7 @@ namespace DaxStudio.UI.ViewModels
                     if (filterPredicateExpressions.TryGetValue(node.NodeId, out var predicateExpr))
                     {
                         vm.FilterPredicateExpression = predicateExpr;
-                        Log.Debug(">>> BuildTree: Set predicate on VM {NodeId}: {Expr}, HasFilterPredicate={Has}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set predicate on VM {NodeId}: {Expr}, HasFilterPredicate={Has}",
                             node.NodeId, predicateExpr, vm.HasFilterPredicate);
                     }
 
@@ -2885,7 +3126,7 @@ namespace DaxStudio.UI.ViewModels
                     if (spoolTypeInfos.TryGetValue(node.NodeId, out var spoolType))
                     {
                         vm.SpoolTypeInfo = spoolType;
-                        Log.Debug(">>> BuildTree: Set spool type on VM {NodeId}: {Type}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set spool type on VM {NodeId}: {Type}",
                             node.NodeId, spoolType);
                     }
 
@@ -2893,7 +3134,7 @@ namespace DaxStudio.UI.ViewModels
                     if (scanColumnInfos.TryGetValue(node.NodeId, out var scanColumn))
                     {
                         vm.ScanColumnInfo = scanColumn;
-                        Log.Debug(">>> BuildTree: Set scan column on VM {NodeId}: {Column}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set scan column on VM {NodeId}: {Column}",
                             node.NodeId, scanColumn);
                     }
 
@@ -2901,7 +3142,7 @@ namespace DaxStudio.UI.ViewModels
                     if (cacheColumnInfos.TryGetValue(node.NodeId, out var cacheColumn))
                     {
                         vm.CacheColumnInfo = cacheColumn;
-                        Log.Debug(">>> BuildTree: Set cache column on VM {NodeId}: {Column}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set cache column on VM {NodeId}: {Column}",
                             node.NodeId, cacheColumn);
                     }
 
@@ -2909,7 +3150,7 @@ namespace DaxStudio.UI.ViewModels
                     if (directQueryFieldsInfos.TryGetValue(node.NodeId, out var dqFields))
                     {
                         vm.DirectQueryFieldsInfo = dqFields;
-                        Log.Debug(">>> BuildTree: Set DirectQuery fields on VM {NodeId}: {Fields}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set DirectQuery fields on VM {NodeId}: {Fields}",
                             node.NodeId, dqFields);
                     }
 
@@ -2917,7 +3158,7 @@ namespace DaxStudio.UI.ViewModels
                     if (dependOnColsInfos.TryGetValue(node.NodeId, out var depCols))
                     {
                         vm.DependOnColsInfo = depCols;
-                        Log.Debug(">>> BuildTree: Set DependOnCols on VM {NodeId}: {Cols}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set DependOnCols on VM {NodeId}: {Cols}",
                             node.NodeId, depCols);
                     }
 
@@ -2925,7 +3166,7 @@ namespace DaxStudio.UI.ViewModels
                     if (nestedSpoolDepths.TryGetValue(node.NodeId, out var nestedDepth))
                     {
                         vm.NestedSpoolDepth = nestedDepth;
-                        Log.Debug(">>> BuildTree: Set nested spool depth on VM {NodeId}: {Depth}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set nested spool depth on VM {NodeId}: {Depth}",
                             node.NodeId, nestedDepth);
                     }
 
@@ -2933,7 +3174,7 @@ namespace DaxStudio.UI.ViewModels
                     if (typeCoercionInfos.TryGetValue(node.NodeId, out var typeCoercion))
                     {
                         vm.TypeCoercionInfo = typeCoercion;
-                        Log.Debug(">>> BuildTree: Set type coercion on VM {NodeId}: {Type}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set type coercion on VM {NodeId}: {Type}",
                             node.NodeId, typeCoercion);
                     }
 
@@ -2942,15 +3183,23 @@ namespace DaxStudio.UI.ViewModels
                     {
                         vm.SpoolRowRangeMin = rowRange.min;
                         vm.SpoolRowRangeMax = rowRange.max;
-                        Log.Debug(">>> BuildTree: Set row range on VM {NodeId}: {Min}-{Max}",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set row range on VM {NodeId}: {Min}-{Max}",
                             node.NodeId, rowRange.min, rowRange.max);
+                    }
+
+                    // Set chained operator count for arithmetic chains
+                    if (chainedOperatorCounts.TryGetValue(node.NodeId, out var chainCount))
+                    {
+                        vm.ChainedOperatorCount = chainCount;
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set chained operator count on VM {NodeId}: {Count}",
+                            node.NodeId, chainCount);
                     }
 
                     // Set collapsed proxy operations if Proxy nodes were folded into this node
                     if (collapsedProxyInfos.TryGetValue(node.NodeId, out var proxyOps))
                     {
                         vm.CollapsedProxyOperations = proxyOps;
-                        Log.Debug(">>> BuildTree: Set collapsed proxy operations on VM {NodeId}: {Count} proxies",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set collapsed proxy operations on VM {NodeId}: {Count} proxies",
                             node.NodeId, proxyOps.Count);
                     }
 
@@ -2958,7 +3207,7 @@ namespace DaxStudio.UI.ViewModels
                     if (foldedOperationsMap.TryGetValue(node.NodeId, out var foldedOps))
                     {
                         vm.FoldedOperations = foldedOps;
-                        Log.Debug(">>> BuildTree: Set folded operations on VM {NodeId}: {Count} operations",
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Set folded operations on VM {NodeId}: {Count} operations",
                             node.NodeId, foldedOps.Count);
                     }
 
@@ -2999,7 +3248,7 @@ namespace DaxStudio.UI.ViewModels
                 root.PlanStorageEngineQueryCount = plan.StorageEngineQueryCount;
                 root.PlanCacheHits = plan.CacheHits;
 
-                Log.Debug(">>> BuildTree: Root node {NodeId} - IsRootNode={IsRoot}, TotalDurationMs={Total}, SEDuration={SE}, FEDuration={FE}, HasExecutionMetrics={HasMetrics}",
+                if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Root node {NodeId} - IsRootNode={IsRoot}, TotalDurationMs={Total}, SEDuration={SE}, FEDuration={FE}, HasExecutionMetrics={HasMetrics}",
                     root.NodeId, root.IsRootNode, root.PlanTotalDurationMs, root.PlanStorageEngineDurationMs,
                     root.PlanFormulaEngineDurationMs, root.HasExecutionMetrics);
 
