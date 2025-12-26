@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore NuGet packages
+        run: nuget restore src/DaxStudio.sln -PackagesDirectory packages
+
+      - name: Build solution
+        run: msbuild src/DaxStudio.sln -p:Configuration=Debug -p:Platform="Any CPU" -m -verbosity:minimal
+
+      - name: Run tests
+        run: |
+          $vstest = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" -ErrorAction SilentlyContinue)
+          if ($vstest) {
+            & $vstest tests/DaxStudio.Tests/bin/Debug/DaxStudio.Tests.dll --logger:trx
+          } else {
+            Write-Host "VSTest not found, skipping tests"
+          }
+        shell: pwsh
+        continue-on-error: true  # Tests may require SSAS, don't fail build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DaxStudio-Debug
+          path: src/bin/Debug/
+          retention-days: 14
