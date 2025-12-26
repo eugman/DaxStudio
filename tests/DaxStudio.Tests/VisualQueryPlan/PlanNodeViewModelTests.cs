@@ -3370,7 +3370,6 @@ namespace DaxStudio.Tests.VisualQueryPlan
         #region Spool Chain Matrix Tests
 
         [TestMethod]
-        [Ignore("Future feature: Spool_MultiValuedHashLookup not yet included in spool chain folding")]
         public void BuildTree_ProjectionSpoolUnderSpoolMultiValuedHashLookup_Folds()
         {
             // Arrange - ProjectionSpool under Spool_MultiValuedHashLookup should fold

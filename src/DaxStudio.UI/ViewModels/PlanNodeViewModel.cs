@@ -811,6 +811,8 @@ namespace DaxStudio.UI.ViewModels
         /// <summary>
         /// Severity level based on row count thresholds.
         /// 100K+ = Warning (yellow), 1M+ = Critical (red)
+        /// Note: Visual coloring is NOT deduped - all nodes with high counts are colored
+        /// to make them easy to spot. Only the issues list is deduped.
         /// </summary>
         public string RowCountSeverity
         {
@@ -1156,6 +1158,10 @@ namespace DaxStudio.UI.ViewModels
         private static readonly Regex TableIdPattern = new Regex(
             @"Table=(\d+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private static readonly Regex RecordsPattern = new Regex(
+            @"#Records=([0-9,]+)",
+            RegexOptions.Compiled);
 
         /// <summary>
         /// Extracts column list from a regex match.
@@ -2511,6 +2517,93 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
+            // ISBLANK/Not pass: Handle ISBLANK predicates and Not→ISBLANK chains
+            // Process bottom-up: first ISBLANK nodes, then Not nodes that have ISBLANK children
+            foreach (var node in plan.AllNodes)
+            {
+                if (foldedNodeIds.Contains(node.NodeId))
+                    continue;
+
+                var opName = GetOperatorNameFromString(node.Operation);
+
+                // Handle standalone ISBLANK - extract columns from IterCols as predicate
+                if (opName == "ISBLANK")
+                {
+                    var iterColsMatch = Regex.Match(node.Operation ?? "", @"IterCols\([^)]*\)\(([^)]+)\)");
+                    if (iterColsMatch.Success)
+                    {
+                        var columns = iterColsMatch.Groups[1].Value;
+                        filterPredicateExpressions[node.NodeId] = $"ISBLANK({columns})";
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: ISBLANK node {NodeId} predicate: ISBLANK({Cols})", node.NodeId, columns);
+                    }
+                }
+            }
+
+            // Now handle Not nodes with ISBLANK children
+            foreach (var node in plan.AllNodes)
+            {
+                if (foldedNodeIds.Contains(node.NodeId))
+                    continue;
+
+                var opName = GetOperatorNameFromString(node.Operation);
+
+                if (opName == "Not")
+                {
+                    var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId && !foldedNodeIds.Contains(n.NodeId)).ToList();
+                    var isblankChild = children.FirstOrDefault(c => GetOperatorNameFromString(c.Operation) == "ISBLANK");
+
+                    if (isblankChild != null)
+                    {
+                        // Fold ISBLANK into Not
+                        foldedNodeIds.Add(isblankChild.NodeId);
+
+                        // Get ISBLANK's predicate and wrap with NOT
+                        if (filterPredicateExpressions.TryGetValue(isblankChild.NodeId, out var isblankPredicate))
+                        {
+                            filterPredicateExpressions.Remove(isblankChild.NodeId);
+                            filterPredicateExpressions[node.NodeId] = $"NOT({isblankPredicate})";
+                        }
+                        else
+                        {
+                            // Build predicate from ISBLANK's IterCols
+                            var iterColsMatch = Regex.Match(isblankChild.Operation ?? "", @"IterCols\([^)]*\)\(([^)]+)\)");
+                            if (iterColsMatch.Success)
+                            {
+                                var columns = iterColsMatch.Groups[1].Value;
+                                filterPredicateExpressions[node.NodeId] = $"NOT(ISBLANK({columns}))";
+                            }
+                        }
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Not node {NodeId} folded ISBLANK, predicate: {Pred}",
+                            node.NodeId, filterPredicateExpressions.GetValueOrDefault(node.NodeId));
+                    }
+                }
+            }
+
+            // Handle Filter nodes that have Not children (for Filter → Not → ISBLANK chains)
+            foreach (var node in plan.AllNodes)
+            {
+                if (foldedNodeIds.Contains(node.NodeId))
+                    continue;
+
+                var opName = GetOperatorNameFromString(node.Operation);
+
+                if (IsFilterOperator(opName))
+                {
+                    var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId && !foldedNodeIds.Contains(n.NodeId)).ToList();
+                    var notChild = children.FirstOrDefault(c => GetOperatorNameFromString(c.Operation) == "Not");
+
+                    if (notChild != null && filterPredicateExpressions.TryGetValue(notChild.NodeId, out var notPredicate))
+                    {
+                        // Fold Not into Filter and take its predicate
+                        foldedNodeIds.Add(notChild.NodeId);
+                        filterPredicateExpressions.Remove(notChild.NodeId);
+                        filterPredicateExpressions[node.NodeId] = notPredicate;
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Filter node {NodeId} folded Not, predicate: {Pred}",
+                            node.NodeId, notPredicate);
+                    }
+                }
+            }
+
             // Fourth pass: Fold spool children into Spool_Iterator and SpoolLookup parents
             var spoolTypeInfos = new Dictionary<int, string>();
             // Track all folded operations for display in detail pane
@@ -3105,6 +3198,81 @@ namespace DaxStudio.UI.ViewModels
                     madeProgress = true;
                 }
             } while (madeProgress);
+
+            // TableToScalar folding pass: Fold TableToScalar and its spool children, transferring records to the first non-spool descendant
+            // Example: DatesBetween → TableToScalar → AggregationSpool → StartOfYear → LastDate
+            // Becomes: DatesBetween → StartOfYear → LastDate (with StartOfYear inheriting records)
+            var recordsInheritanceMap = new Dictionary<int, long>();  // Maps node ID to inherited records
+            foreach (var node in plan.AllNodes)
+            {
+                if (foldedNodeIds.Contains(node.NodeId))
+                    continue;
+
+                var opName = GetOperatorNameFromString(node.Operation);
+                if (opName != "TableToScalar")
+                    continue;
+
+                // Get records from TableToScalar
+                var tableToScalarRecords = node.Records;
+                if (!tableToScalarRecords.HasValue)
+                {
+                    // Try to extract from operation string
+                    var recordsMatch = RecordsPattern.Match(node.Operation ?? "");
+                    if (recordsMatch.Success && long.TryParse(recordsMatch.Groups[1].Value.Replace(",", ""), out var extractedRecords))
+                        tableToScalarRecords = extractedRecords;
+                }
+
+                // Fold TableToScalar
+                foldedNodeIds.Add(node.NodeId);
+                if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding TableToScalar node {NodeId}", node.NodeId);
+
+                // Find children and fold spool children, finding the first non-spool descendant
+                var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId && !foldedNodeIds.Contains(n.NodeId)).ToList();
+                EnrichedPlanNode targetDescendant = null;
+
+                foreach (var child in children)
+                {
+                    var childOpName = GetOperatorNameFromString(child.Operation);
+
+                    // Check if it's a spool type
+                    bool isSpoolType = childOpName.Contains("Spool<") || childOpName.EndsWith("Spool", StringComparison.OrdinalIgnoreCase) ||
+                                       childOpName.StartsWith("AggregationSpool", StringComparison.Ordinal);
+
+                    if (isSpoolType)
+                    {
+                        // Fold this spool too
+                        foldedNodeIds.Add(child.NodeId);
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Also folding spool {ChildId} ({ChildOp})", child.NodeId, childOpName);
+
+                        // Track folded operation
+                        var grandchildren = plan.AllNodes.Where(n => n.Parent?.NodeId == child.NodeId && !foldedNodeIds.Contains(n.NodeId)).ToList();
+                        if (grandchildren.Count > 0)
+                        {
+                            targetDescendant = grandchildren[0];
+                            AddFoldedOp(targetDescendant.NodeId, node.Operation);
+                            AddFoldedOp(targetDescendant.NodeId, child.Operation);
+                        }
+                    }
+                    else
+                    {
+                        // This non-spool child is the target
+                        targetDescendant = child;
+                        AddFoldedOp(targetDescendant.NodeId, node.Operation);
+                    }
+                }
+
+                // Transfer records to target descendant if it doesn't have its own
+                if (targetDescendant != null && tableToScalarRecords.HasValue)
+                {
+                    if (!targetDescendant.Records.HasValue || targetDescendant.Records == 0)
+                    {
+                        targetDescendant.Records = tableToScalarRecords.Value;
+                        targetDescendant.RecordsSource = "Inherited";
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Transferred {Records} records from TableToScalar to {TargetId}",
+                            tableToScalarRecords.Value, targetDescendant.NodeId);
+                    }
+                }
+            }
 
             // Create ViewModels for non-folded nodes only
             if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: filterPredicateExpressions has {Count} entries", filterPredicateExpressions.Count);

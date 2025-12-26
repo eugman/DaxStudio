@@ -1158,7 +1158,7 @@ namespace DaxStudio.UI.ViewModels
         /// Starts from the deepest collapsible nodes and works toward the root,
         /// stopping when the visible tree width is below the threshold.
         /// </summary>
-        private void AutoCollapseSubtrees(PlanNodeViewModel root, int targetVisibleWidth = 25)
+        private void AutoCollapseSubtrees(PlanNodeViewModel root, int targetVisibleWidth = 15)
         {
             if (root == null) return;
 

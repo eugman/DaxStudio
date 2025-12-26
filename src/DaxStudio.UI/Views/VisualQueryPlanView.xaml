@@ -344,8 +344,9 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemContainerStyle>
                                 <Style TargetType="ContentPresenter">
-                                    <Setter Property="Canvas.Left" Value="{Binding X}"/>
-                                    <Setter Property="Canvas.Top" Value="{Binding Y}"/>
+                                    <Setter Property="attached:CanvasPositionAnimation.IsEnabled" Value="True"/>
+                                    <Setter Property="attached:CanvasPositionAnimation.AnimatedLeft" Value="{Binding X}"/>
+                                    <Setter Property="attached:CanvasPositionAnimation.AnimatedTop" Value="{Binding Y}"/>
                                 </Style>
                             </ItemsControl.ItemContainerStyle>
                             <ItemsControl.ItemTemplate>
