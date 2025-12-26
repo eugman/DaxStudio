@@ -180,5 +180,101 @@ namespace DaxStudio.Tests.VisualQueryPlan
             Assert.AreEqual(1000000, _detector.Settings.ExcessiveMaterializationErrorThreshold);
             Assert.IsTrue(_detector.Settings.DetectCallbackDataId);
         }
+
+        [TestMethod]
+        public void DetectIssues_WithSameRowCountInPath_KeepsOnlyLeafMost()
+        {
+            // Arrange - ancestor and descendant both have 200,000 rows
+            // The deduplication should keep only the descendant (leaf-most)
+            var ancestor = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "Spool_Iterator #Records=200000"
+            };
+            var descendant = new EnrichedPlanNode
+            {
+                NodeId = 2,
+                Operation = "Spool_Iterator #Records=200000",
+                Parent = ancestor
+            };
+
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new System.Collections.Generic.List<EnrichedPlanNode> { ancestor, descendant }
+            };
+
+            // Act
+            var issues = _detector.DetectIssues(plan);
+
+            // Assert - should have only 1 issue (for the descendant)
+            var materializationIssues = issues.Where(i => i.IssueType == IssueType.ExcessiveMaterialization).ToList();
+            Assert.AreEqual(1, materializationIssues.Count, "Should keep only leaf-most issue per row count");
+            Assert.AreEqual(2, materializationIssues[0].AffectedNodeId, "Should be the descendant node");
+        }
+
+        [TestMethod]
+        public void DetectIssues_WithDifferentRowCounts_KeepsBothIssues()
+        {
+            // Arrange - ancestor has 200,000 rows, descendant has 300,000 rows
+            // Different row counts should not be deduped
+            var ancestor = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "Spool_Iterator #Records=200000"
+            };
+            var descendant = new EnrichedPlanNode
+            {
+                NodeId = 2,
+                Operation = "Spool_Iterator #Records=300000",
+                Parent = ancestor
+            };
+
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new System.Collections.Generic.List<EnrichedPlanNode> { ancestor, descendant }
+            };
+
+            // Act
+            var issues = _detector.DetectIssues(plan);
+
+            // Assert - should have 2 issues (different row counts)
+            var materializationIssues = issues.Where(i => i.IssueType == IssueType.ExcessiveMaterialization).ToList();
+            Assert.AreEqual(2, materializationIssues.Count, "Different row counts should not be deduped");
+        }
+
+        [TestMethod]
+        public void DetectIssues_WithSameRowCountInSiblings_KeepsBothIssues()
+        {
+            // Arrange - two siblings have the same row count (no ancestor relationship)
+            var parent = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "Sum_Vertipaq"
+            };
+            var sibling1 = new EnrichedPlanNode
+            {
+                NodeId = 2,
+                Operation = "Spool_Iterator #Records=200000",
+                Parent = parent
+            };
+            var sibling2 = new EnrichedPlanNode
+            {
+                NodeId = 3,
+                Operation = "Spool_Iterator #Records=200000",
+                Parent = parent
+            };
+
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new System.Collections.Generic.List<EnrichedPlanNode> { parent, sibling1, sibling2 }
+            };
+
+            // Act
+            var issues = _detector.DetectIssues(plan);
+
+            // Assert - should have 2 issues (siblings, not ancestor-descendant)
+            var materializationIssues = issues.Where(i => i.IssueType == IssueType.ExcessiveMaterialization).ToList();
+            Assert.AreEqual(2, materializationIssues.Count, "Siblings should not be deduped");
+        }
     }
 }

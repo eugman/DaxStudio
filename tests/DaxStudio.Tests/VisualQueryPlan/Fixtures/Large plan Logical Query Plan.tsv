@@ -1,0 +1,87 @@
+Line	Logical Query Plan
+1	AddColumns: RelLogOp DependOnCols()() 0-0 RequiredCols(0)(''[Test])
+2	    Sum_Vertipaq: ScaLogOp DependOnCols()() Currency DominantValue=BLANK
+3	        Scan_Vertipaq: RelLogOp DependOnCols()() 0-41 RequiredCols(1)('Customer'[CustomerKey])
+4	        Calculate: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+5	            Add: ScaLogOp MeasureRef=[Test] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+6	                Add: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+7	                    Add: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+8	                        Calculate: ScaLogOp MeasureRef=[Audio] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+9	                            Sum_Vertipaq: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+10	                                Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 45-274 RequiredCols(1, 151, 155)('Customer'[CustomerKey], 'Sales'[Quantity], 'Sales'[Net Price])
+11	                                Multiply: ScaLogOp DependOnCols(151, 155)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+12	                                    'Sales'[Quantity]: ScaLogOp DependOnCols(151)('Sales'[Quantity]) Integer DominantValue=NONE
+13	                                    'Sales'[Net Price]: ScaLogOp DependOnCols(155)('Sales'[Net Price]) Currency DominantValue=NONE
+14	                            Filter_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+15	                                Scan_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+16	                                'Product Category'[Category] = Audio: ScaLogOp DependOnCols(43)('Product Category'[Category]) Boolean DominantValue=false
+17	                            DatesBetween: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+18	                                TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+19	                                    StartOfYear: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+20	                                        LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+21	                                            Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+22	                                TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+23	                                    LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+24	                                        Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+25	                        Calculate: ScaLogOp MeasureRef=[TV and Video] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+26	                            Sum_Vertipaq: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+27	                                Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 45-274 RequiredCols(1, 151, 155)('Customer'[CustomerKey], 'Sales'[Quantity], 'Sales'[Net Price])
+28	                                Multiply: ScaLogOp DependOnCols(151, 155)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+29	                                    'Sales'[Quantity]: ScaLogOp DependOnCols(151)('Sales'[Quantity]) Integer DominantValue=NONE
+30	                                    'Sales'[Net Price]: ScaLogOp DependOnCols(155)('Sales'[Net Price]) Currency DominantValue=NONE
+31	                            Filter_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+32	                                Scan_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+33	                                'Product Category'[Category] = TV and Video: ScaLogOp DependOnCols(43)('Product Category'[Category]) Boolean DominantValue=false
+34	                            DatesBetween: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+35	                                TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+36	                                    StartOfYear: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+37	                                        LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+38	                                            Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+39	                                TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+40	                                    LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+41	                                        Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+42	                    Calculate: ScaLogOp MeasureRef=[Computers] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+43	                        Sum_Vertipaq: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+44	                            Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 45-274 RequiredCols(1, 151, 155)('Customer'[CustomerKey], 'Sales'[Quantity], 'Sales'[Net Price])
+45	                            Multiply: ScaLogOp DependOnCols(151, 155)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+46	                                'Sales'[Quantity]: ScaLogOp DependOnCols(151)('Sales'[Quantity]) Integer DominantValue=NONE
+47	                                'Sales'[Net Price]: ScaLogOp DependOnCols(155)('Sales'[Net Price]) Currency DominantValue=NONE
+48	                        Filter_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+49	                            Scan_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+50	                            'Product Category'[Category] = Computers: ScaLogOp DependOnCols(43)('Product Category'[Category]) Boolean DominantValue=false
+51	                        DatesBetween: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+52	                            TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+53	                                StartOfYear: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+54	                                    LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+55	                                        Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+56	                            TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+57	                                LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+58	                                    Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+59	                Calculate: ScaLogOp MeasureRef=[Cell phones] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+60	                    Sum_Vertipaq: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(1)('Customer'[CustomerKey]) Currency DominantValue=BLANK
+61	                        Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 45-274 RequiredCols(1, 151, 155)('Customer'[CustomerKey], 'Sales'[Quantity], 'Sales'[Net Price])
+62	                        Multiply: ScaLogOp DependOnCols(151, 155)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+63	                            'Sales'[Quantity]: ScaLogOp DependOnCols(151)('Sales'[Quantity]) Integer DominantValue=NONE
+64	                            'Sales'[Net Price]: ScaLogOp DependOnCols(155)('Sales'[Net Price]) Currency DominantValue=NONE
+65	                    Filter_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+66	                        Scan_Vertipaq: RelLogOp DependOnCols()() 43-43 RequiredCols(43)('Product Category'[Category])
+67	                        'Product Category'[Category] = Cell phones: ScaLogOp DependOnCols(43)('Product Category'[Category]) Boolean DominantValue=false
+68	                    DatesBetween: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+69	                        TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+70	                            StartOfYear: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+71	                                LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+72	                                    Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+73	                        TableToScalar: ScaLogOp DependOnCols(1)('Customer'[CustomerKey]) DateTime DominantValue=BLANK
+74	                            LastDate: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+75	                                Scan_Vertipaq: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 44-44 RequiredCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+76	            First: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 42-42 RequiredCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+77	                Filter: RelLogOp DependOnCols(1)('Customer'[CustomerKey]) 42-42 RequiredCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+78	                    Scan_Vertipaq: RelLogOp DependOnCols()() 42-42 RequiredCols(42)('Date'[Date])
+79	                    Not: ScaLogOp DependOnCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) Boolean DominantValue=false
+80	                        ISBLANK: ScaLogOp DependOnCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) Boolean DominantValue=true
+81	                            Sum_Vertipaq: ScaLogOp MeasureRef=[Sales Amount] DependOnCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) Currency DominantValue=BLANK
+82	                                Scan_Vertipaq: RelLogOp DependOnCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) 43-272 RequiredCols(1, 42, 149, 153)('Customer'[CustomerKey], 'Date'[Date], 'Sales'[Quantity], 'Sales'[Net Price])
+83	                                Multiply: ScaLogOp DependOnCols(149, 153)('Sales'[Quantity], 'Sales'[Net Price]) Currency DominantValue=NONE
+84	                                    'Sales'[Quantity]: ScaLogOp DependOnCols(149)('Sales'[Quantity]) Integer DominantValue=NONE
+85	                                    'Sales'[Net Price]: ScaLogOp DependOnCols(153)('Sales'[Net Price]) Currency DominantValue=NONE
+86	                'Date'[Date]: ScaLogOp DependOnCols(42)('Date'[Date]) DateTime DominantValue=NONE

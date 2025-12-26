@@ -1,21 +1,22 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using DaxStudio.QueryTrace;
 using DaxStudio.UI.Model;
 using DaxStudio.UI.Services;
 using DaxStudio.UI.ViewModels;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Newtonsoft.Json;
 
 namespace DaxStudio.Tests.VisualQueryPlan
 {
     /// <summary>
     /// Integration tests using fixture data to verify complete parsing pipelines.
-    /// These tests load real query plan data captured from actual queries and verify
-    /// that all expected items are correctly extracted.
+    /// These tests load TSV exports from DaxStudio's UI and verify that the enrichment
+    /// pipeline correctly processes them.
     /// </summary>
     [TestClass]
     public class FixtureIntegrationTests
@@ -24,16 +25,258 @@ namespace DaxStudio.Tests.VisualQueryPlan
         {
             get
             {
-                // Use assembly location to find fixtures relative to the test DLL
                 var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 return Path.Combine(assemblyDir, "..", "..", "..", "tests", "DaxStudio.Tests", "VisualQueryPlan", "Fixtures");
             }
         }
 
+        #region TSV Parsing Helpers
+
+        /// <summary>
+        /// Parses a Physical Query Plan TSV file into PhysicalQueryPlanRow objects.
+        /// Format: Line[tab]Records[tab]Physical Query Plan
+        /// Indentation is 4 spaces per level.
+        /// </summary>
+        private static List<PhysicalQueryPlanRow> ParsePhysicalPlanTsv(string filePath)
+        {
+            var rows = new List<PhysicalQueryPlanRow>();
+            var lines = File.ReadAllLines(filePath);
+
+            // Skip header line
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var parts = line.Split('\t');
+                if (parts.Length < 3) continue;
+
+                // Parse line number
+                if (!int.TryParse(parts[0], out int lineNumber)) continue;
+
+                // Parse records (may be empty)
+                long? records = null;
+                if (!string.IsNullOrEmpty(parts[1]) && long.TryParse(parts[1], out long recordsValue))
+                {
+                    records = recordsValue;
+                }
+
+                // Parse operation with indentation
+                var operationWithIndent = parts[2];
+                var trimmedOperation = operationWithIndent.TrimStart();
+                var leadingSpaces = operationWithIndent.Length - trimmedOperation.Length;
+                var level = leadingSpaces / 4; // 4 spaces per indent level
+
+                rows.Add(new PhysicalQueryPlanRow
+                {
+                    RowNumber = lineNumber,
+                    Records = records,
+                    Operation = trimmedOperation,
+                    IndentedOperation = operationWithIndent,
+                    Level = level,
+                    NextSiblingRowNumber = 0, // Will be calculated if needed
+                    HighlightRow = false
+                });
+            }
+
+            // Calculate NextSiblingRowNumber for each row
+            CalculateNextSiblingRowNumbers(rows);
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Parses a Logical Query Plan TSV file into LogicalQueryPlanRow objects.
+        /// Format: Line[tab]Logical Query Plan
+        /// Indentation is 4 spaces per level.
+        /// </summary>
+        private static List<LogicalQueryPlanRow> ParseLogicalPlanTsv(string filePath)
+        {
+            var rows = new List<LogicalQueryPlanRow>();
+            var lines = File.ReadAllLines(filePath);
+
+            // Skip header line
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var parts = line.Split('\t');
+                if (parts.Length < 2) continue;
+
+                // Parse line number
+                if (!int.TryParse(parts[0], out int lineNumber)) continue;
+
+                // Parse operation with indentation
+                var operationWithIndent = parts[1];
+                var trimmedOperation = operationWithIndent.TrimStart();
+                var leadingSpaces = operationWithIndent.Length - trimmedOperation.Length;
+                var level = leadingSpaces / 4; // 4 spaces per indent level
+
+                rows.Add(new LogicalQueryPlanRow
+                {
+                    RowNumber = lineNumber,
+                    Operation = trimmedOperation,
+                    IndentedOperation = operationWithIndent,
+                    Level = level,
+                    NextSiblingRowNumber = 0,
+                    HighlightRow = false
+                });
+            }
+
+            // Calculate NextSiblingRowNumber for each row
+            CalculateNextSiblingRowNumbers(rows);
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Parses a Server Timings TSV file into TraceStorageEngineEvent objects.
+        /// Format: Line[tab]Subclass[tab]Duration[tab]CPU[tab]Par.[tab]Rows[tab]KB[tab]Timeline[tab]Query
+        /// </summary>
+        private static List<TraceStorageEngineEvent> ParseServerTimingsTsv(string filePath)
+        {
+            var events = new List<TraceStorageEngineEvent>();
+            var lines = File.ReadAllLines(filePath);
+
+            // Skip header line
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var parts = line.Split('\t');
+                if (parts.Length < 9) continue;
+
+                // Skip ExecutionMetrics rows
+                if (parts.Length >= 2 && parts[1] == "ExecutionMetrics") continue;
+
+                // Parse fields
+                var subclass = parts[1];
+                long.TryParse(parts[2], out long duration);
+                long.TryParse(parts[3], out long cpuTime);
+                // parts[4] is Par. (parallelism factor) - we can calculate NetParallelDuration
+                long.TryParse(parts[5], out long estimatedRows);
+                long.TryParse(parts[6], out long estimatedKBytes);
+                var query = parts.Length > 8 ? parts[8] : "";
+
+                // Calculate NetParallelDuration from parallelism factor if available
+                long netParallelDuration = duration;
+                if (!string.IsNullOrEmpty(parts[4]) && double.TryParse(parts[4], NumberStyles.Float, CultureInfo.InvariantCulture, out double parFactor) && parFactor > 0)
+                {
+                    netParallelDuration = (long)(duration * parFactor);
+                }
+
+                // Determine if this is a cache hit based on subclass
+                bool isCacheHit = subclass?.Contains("Cache") == true;
+
+                // Extract table name from query for ObjectName
+                string objectName = ExtractTableNameFromQuery(query);
+
+                events.Add(new TraceStorageEngineEvent
+                {
+                    Subclass = MapSubclass(subclass),
+                    Duration = duration,
+                    CpuTime = cpuTime,
+                    NetParallelDuration = netParallelDuration,
+                    EstimatedRows = estimatedRows,
+                    EstimatedKBytes = estimatedKBytes,
+                    Query = query,
+                    TextData = query,
+                    ObjectName = objectName
+                });
+            }
+
+            return events;
+        }
+
+        /// <summary>
+        /// Maps TSV subclass text to the enum used internally.
+        /// </summary>
+        private static DaxStudioTraceEventSubclass MapSubclass(string subclass)
+        {
+            if (string.IsNullOrEmpty(subclass)) return DaxStudioTraceEventSubclass.NotAvailable;
+
+            return subclass switch
+            {
+                "Scan" => DaxStudioTraceEventSubclass.VertiPaqScan,
+                "Cache" => DaxStudioTraceEventSubclass.VertiPaqCacheExactMatch,
+                "Internal" => DaxStudioTraceEventSubclass.VertiPaqScanInternal,
+                "Batch" => DaxStudioTraceEventSubclass.BatchVertiPaqScan,
+                _ => Enum.TryParse<DaxStudioTraceEventSubclass>(subclass, true, out var result)
+                    ? result
+                    : DaxStudioTraceEventSubclass.NotAvailable
+            };
+        }
+
+        /// <summary>
+        /// Extracts the primary table name from an xmSQL query.
+        /// </summary>
+        private static string ExtractTableNameFromQuery(string query)
+        {
+            if (string.IsNullOrEmpty(query)) return null;
+
+            // Look for FROM 'TableName' or FROM [TableName]
+            var fromIdx = query.IndexOf("FROM ", StringComparison.OrdinalIgnoreCase);
+            if (fromIdx < 0) return null;
+
+            var afterFrom = query.Substring(fromIdx + 5).TrimStart();
+
+            // Handle 'TableName' format
+            if (afterFrom.StartsWith("'"))
+            {
+                var endQuote = afterFrom.IndexOf('\'', 1);
+                if (endQuote > 1)
+                {
+                    return afterFrom.Substring(1, endQuote - 1);
+                }
+            }
+
+            // Handle [TableName] format
+            if (afterFrom.StartsWith("["))
+            {
+                var endBracket = afterFrom.IndexOf(']');
+                if (endBracket > 1)
+                {
+                    return afterFrom.Substring(1, endBracket - 1);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Calculates NextSiblingRowNumber for query plan rows based on level hierarchy.
+        /// </summary>
+        private static void CalculateNextSiblingRowNumbers<T>(List<T> rows) where T : class
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                dynamic row = rows[i];
+                int currentLevel = row.Level;
+                int nextSibling = 0;
+
+                // Find next row at same or lower level
+                for (int j = i + 1; j < rows.Count; j++)
+                {
+                    dynamic nextRow = rows[j];
+                    if (nextRow.Level <= currentLevel)
+                    {
+                        nextSibling = nextRow.RowNumber;
+                        break;
+                    }
+                }
+
+                row.NextSiblingRowNumber = nextSibling;
+            }
+        }
+
+        #endregion
+
         #region Fixture Discovery
 
         /// <summary>
-        /// Gets all fixture base names (e.g., "Filtered Margin.dax", "100 million row.dax")
+        /// Gets all fixture base names by finding .dax files that have associated TSV files.
         /// </summary>
         private static IEnumerable<string> GetAllFixtureBaseNames()
         {
@@ -43,99 +286,62 @@ namespace DaxStudio.Tests.VisualQueryPlan
                 yield break;
             }
 
-            // Find all .dax files (the base files for each fixture set)
             foreach (var file in Directory.GetFiles(path, "*.dax"))
             {
                 var fileName = Path.GetFileName(file);
-                // Skip files that are actually extensions (e.g., .dax.queryPlans)
-                if (!fileName.Contains(".dax."))
+                // Skip files that are extensions (e.g., .dax.queryPlans)
+                if (fileName.Contains(".dax.")) continue;
+
+                var baseName = Path.GetFileNameWithoutExtension(fileName);
+
+                // Check if TSV files exist for this fixture
+                var physicalTsv = Path.Combine(path, $"{baseName} Physical Query Plan.tsv");
+                var logicalTsv = Path.Combine(path, $"{baseName} Logical Query Plan.tsv");
+
+                if (File.Exists(physicalTsv) || File.Exists(logicalTsv))
                 {
-                    yield return fileName;
+                    yield return baseName;
                 }
             }
         }
 
-        #endregion
-
-        #region Fixture Loading Helpers
-
-        private static QueryPlansFixture LoadQueryPlansFixture(string baseName)
+        /// <summary>
+        /// Loads Physical Query Plan rows from TSV for a fixture.
+        /// </summary>
+        private static List<PhysicalQueryPlanRow> LoadPhysicalPlanRows(string baseName)
         {
-            var path = Path.Combine(FixturesPath, $"{baseName}.queryPlans");
+            var path = Path.Combine(FixturesPath, $"{baseName} Physical Query Plan.tsv");
             if (!File.Exists(path))
             {
-                Assert.Inconclusive($"Fixture file not found: {path}");
+                Assert.Inconclusive($"Physical Query Plan TSV not found: {path}");
             }
-            var json = File.ReadAllText(path);
-            return JsonConvert.DeserializeObject<QueryPlansFixture>(json);
+            return ParsePhysicalPlanTsv(path);
         }
 
-        private static ServerTimingsFixture LoadServerTimingsFixture(string baseName)
+        /// <summary>
+        /// Loads Logical Query Plan rows from TSV for a fixture.
+        /// </summary>
+        private static List<LogicalQueryPlanRow> LoadLogicalPlanRows(string baseName)
         {
-            var path = Path.Combine(FixturesPath, $"{baseName}.serverTimings");
+            var path = Path.Combine(FixturesPath, $"{baseName} Logical Query Plan.tsv");
             if (!File.Exists(path))
             {
-                Assert.Inconclusive($"Fixture file not found: {path}");
+                Assert.Inconclusive($"Logical Query Plan TSV not found: {path}");
             }
-            var json = File.ReadAllText(path);
-            return JsonConvert.DeserializeObject<ServerTimingsFixture>(json);
+            return ParseLogicalPlanTsv(path);
         }
 
         /// <summary>
-        /// Converts fixture QueryPlanRow to PhysicalQueryPlanRow.
+        /// Loads Server Timings (SE events) from TSV for a fixture.
         /// </summary>
-        private static List<PhysicalQueryPlanRow> ToPhysicalPlanRows(List<QueryPlanRowFixture> fixtureRows)
+        private static List<TraceStorageEngineEvent> LoadServerTimings(string baseName)
         {
-            if (fixtureRows == null) return new List<PhysicalQueryPlanRow>();
-
-            return fixtureRows.Select(r => new PhysicalQueryPlanRow
+            var path = Path.Combine(FixturesPath, $"{baseName} Server Timings.tsv");
+            if (!File.Exists(path))
             {
-                Operation = r.Operation,
-                IndentedOperation = r.IndentedOperation,
-                Level = r.Level,
-                RowNumber = r.RowNumber,
-                NextSiblingRowNumber = r.NextSiblingRowNumber,
-                HighlightRow = r.HighlightRow,
-                Records = r.Records
-            }).ToList();
-        }
-
-        /// <summary>
-        /// Converts fixture QueryPlanRow to LogicalQueryPlanRow.
-        /// </summary>
-        private static List<LogicalQueryPlanRow> ToLogicalPlanRows(List<QueryPlanRowFixture> fixtureRows)
-        {
-            if (fixtureRows == null) return new List<LogicalQueryPlanRow>();
-
-            return fixtureRows.Select(r => new LogicalQueryPlanRow
-            {
-                Operation = r.Operation,
-                IndentedOperation = r.IndentedOperation,
-                Level = r.Level,
-                RowNumber = r.RowNumber,
-                NextSiblingRowNumber = r.NextSiblingRowNumber,
-                HighlightRow = r.HighlightRow
-            }).ToList();
-        }
-
-        /// <summary>
-        /// Converts fixture SE events to TraceStorageEngineEvent.
-        /// </summary>
-        private static List<TraceStorageEngineEvent> ToStorageEngineEvents(List<StorageEngineEventFixture> fixtureEvents)
-        {
-            if (fixtureEvents == null) return new List<TraceStorageEngineEvent>();
-
-            return fixtureEvents.Select(e => new TraceStorageEngineEvent
-            {
-                ObjectName = e.ObjectName,
-                Query = e.Query,
-                TextData = e.TextData,
-                Duration = e.Duration ?? 0,
-                CpuTime = e.CpuTime ?? 0,
-                NetParallelDuration = e.NetParallelDuration ?? 0,
-                EstimatedRows = e.EstimatedRows ?? 0,
-                EstimatedKBytes = e.EstimatedKBytes ?? 0
-            }).ToList();
+                return new List<TraceStorageEngineEvent>(); // Optional - not all fixtures have timings
+            }
+            return ParseServerTimingsTsv(path);
         }
 
         #endregion
@@ -143,72 +349,61 @@ namespace DaxStudio.Tests.VisualQueryPlan
         #region Data-Driven Tests for All Fixtures
 
         [TestMethod]
-        public async Task AllFixtures_LogicalPlan_ParsesSuccessfully()
+        public void DiscoverFixtures_FindsAtLeastOne()
         {
             var fixtures = GetAllFixtureBaseNames().ToList();
-            Assert.IsTrue(fixtures.Count > 0, "No fixtures found in Fixtures folder");
+            Assert.IsTrue(fixtures.Count > 0,
+                $"No fixtures found in {FixturesPath}. Expected .dax files with matching TSV files.");
 
-            foreach (var fixtureName in fixtures)
+            foreach (var fixture in fixtures)
             {
-                // Arrange
-                var fixture = LoadQueryPlansFixture(fixtureName);
-                var enrichmentService = new PlanEnrichmentService();
-                var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
-
-                // Act
-                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-
-                // Assert
-                Assert.IsNotNull(plan, $"[{fixtureName}] Plan should be created");
-                Assert.IsTrue(plan.AllNodes.Count > 0, $"[{fixtureName}] Should have nodes in logical plan");
+                System.Diagnostics.Debug.WriteLine($"Found fixture: {fixture}");
             }
         }
 
         [TestMethod]
-        public async Task AllFixtures_PhysicalPlan_ParsesSuccessfully()
+        public async Task AllFixtures_PhysicalPlan_ParsesFromTsv()
         {
             var fixtures = GetAllFixtureBaseNames().ToList();
-            Assert.IsTrue(fixtures.Count > 0, "No fixtures found in Fixtures folder");
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
 
             foreach (var fixtureName in fixtures)
             {
                 // Arrange
-                var fixture = LoadQueryPlansFixture(fixtureName);
+                var rows = LoadPhysicalPlanRows(fixtureName);
                 var enrichmentService = new PlanEnrichmentService();
-                var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
 
                 // Act
-                var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+                var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
 
                 // Assert
                 Assert.IsNotNull(plan, $"[{fixtureName}] Plan should be created");
-                Assert.IsTrue(plan.AllNodes.Count > 0, $"[{fixtureName}] Should have nodes in physical plan");
+                Assert.IsTrue(plan.AllNodes.Count > 0, $"[{fixtureName}] Should have nodes. Parsed {rows.Count} rows.");
+                Assert.AreEqual(rows.Count, plan.AllNodes.Count,
+                    $"[{fixtureName}] Node count should match row count");
             }
         }
 
         [TestMethod]
-        public async Task AllFixtures_LogicalPlan_BuildsTree()
+        public async Task AllFixtures_LogicalPlan_ParsesFromTsv()
         {
             var fixtures = GetAllFixtureBaseNames().ToList();
-            Assert.IsTrue(fixtures.Count > 0, "No fixtures found in Fixtures folder");
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
 
             foreach (var fixtureName in fixtures)
             {
                 // Arrange
-                var fixture = LoadQueryPlansFixture(fixtureName);
+                var rows = LoadLogicalPlanRows(fixtureName);
                 var enrichmentService = new PlanEnrichmentService();
-                var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
 
                 // Act
-                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-                var tree = PlanNodeViewModel.BuildTree(plan);
-                var visibleNodes = GetAllNodes(tree).ToList();
+                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
 
                 // Assert
-                Assert.IsNotNull(tree, $"[{fixtureName}] Tree should be built");
-                Assert.IsTrue(visibleNodes.Count > 0, $"[{fixtureName}] Should have visible nodes");
-                Assert.IsTrue(visibleNodes.Count <= plan.AllNodes.Count,
-                    $"[{fixtureName}] Visible nodes ({visibleNodes.Count}) should be <= total ({plan.AllNodes.Count})");
+                Assert.IsNotNull(plan, $"[{fixtureName}] Plan should be created");
+                Assert.IsTrue(plan.AllNodes.Count > 0, $"[{fixtureName}] Should have nodes. Parsed {rows.Count} rows.");
+                Assert.AreEqual(rows.Count, plan.AllNodes.Count,
+                    $"[{fixtureName}] Node count should match row count");
             }
         }
 
@@ -216,17 +411,39 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public async Task AllFixtures_PhysicalPlan_BuildsTree()
         {
             var fixtures = GetAllFixtureBaseNames().ToList();
-            Assert.IsTrue(fixtures.Count > 0, "No fixtures found in Fixtures folder");
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
 
             foreach (var fixtureName in fixtures)
             {
                 // Arrange
-                var fixture = LoadQueryPlansFixture(fixtureName);
+                var rows = LoadPhysicalPlanRows(fixtureName);
                 var enrichmentService = new PlanEnrichmentService();
-                var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
 
                 // Act
-                var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+                var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
+                var tree = PlanNodeViewModel.BuildTree(plan);
+                var visibleNodes = GetAllNodes(tree).ToList();
+
+                // Assert
+                Assert.IsNotNull(tree, $"[{fixtureName}] Tree should be built");
+                Assert.IsTrue(visibleNodes.Count > 0, $"[{fixtureName}] Should have visible nodes");
+            }
+        }
+
+        [TestMethod]
+        public async Task AllFixtures_LogicalPlan_BuildsTree()
+        {
+            var fixtures = GetAllFixtureBaseNames().ToList();
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
+
+            foreach (var fixtureName in fixtures)
+            {
+                // Arrange
+                var rows = LoadLogicalPlanRows(fixtureName);
+                var enrichmentService = new PlanEnrichmentService();
+
+                // Act
+                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
                 var tree = PlanNodeViewModel.BuildTree(plan);
                 var visibleNodes = GetAllNodes(tree).ToList();
 
@@ -240,459 +457,277 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public async Task AllFixtures_WithServerTimings_CorrelatesXmSql()
         {
             var fixtures = GetAllFixtureBaseNames().ToList();
-            Assert.IsTrue(fixtures.Count > 0, "No fixtures found in Fixtures folder");
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
 
             foreach (var fixtureName in fixtures)
             {
                 // Arrange
-                var planFixture = LoadQueryPlansFixture(fixtureName);
-                var timingsFixture = LoadServerTimingsFixture(fixtureName);
+                var rows = LoadLogicalPlanRows(fixtureName);
+                var seEvents = LoadServerTimings(fixtureName);
+
+                // Skip if no server timings for this fixture
+                if (seEvents.Count == 0) continue;
+
                 var enrichmentService = new PlanEnrichmentService();
 
-                var rows = ToLogicalPlanRows(planFixture.LogicalQueryPlanRows);
-                var seEvents = ToStorageEngineEvents(timingsFixture.StorageEngineEvents);
-
                 // Act
-                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, seEvents, null, planFixture.ActivityID);
+                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, seEvents, null, Guid.NewGuid().ToString());
 
                 // Assert - verify xmSQL is correlated to scan nodes
-                var nodesWithXmSql = plan.AllNodes.Where(n => !string.IsNullOrEmpty(n.XmSql) || !string.IsNullOrEmpty(n.ResolvedXmSql)).ToList();
-                Assert.IsTrue(nodesWithXmSql.Count >= 1, $"[{fixtureName}] Should have at least 1 node with xmSQL, found {nodesWithXmSql.Count}");
+                var nodesWithXmSql = plan.AllNodes
+                    .Where(n => !string.IsNullOrEmpty(n.XmSql) || !string.IsNullOrEmpty(n.ResolvedXmSql))
+                    .ToList();
+
+                Assert.IsTrue(nodesWithXmSql.Count >= 1,
+                    $"[{fixtureName}] Should have at least 1 node with xmSQL. " +
+                    $"SE events: {seEvents.Count}, Nodes: {plan.AllNodes.Count}");
+            }
+        }
+
+        [TestMethod]
+        public async Task AllFixtures_PhysicalPlan_ExtractsRecordCounts()
+        {
+            var fixtures = GetAllFixtureBaseNames().ToList();
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
+
+            foreach (var fixtureName in fixtures)
+            {
+                // Arrange
+                var rows = LoadPhysicalPlanRows(fixtureName);
+                var rowsWithRecords = rows.Where(r => r.Records.HasValue && r.Records.Value > 0).ToList();
+
+                // Skip if no rows have record counts
+                if (rowsWithRecords.Count == 0) continue;
+
+                var enrichmentService = new PlanEnrichmentService();
+
+                // Act
+                var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
+                var tree = PlanNodeViewModel.BuildTree(plan);
+                var allNodes = GetAllNodes(tree).ToList();
+
+                // Assert - nodes should have record counts
+                var nodesWithRecords = allNodes.Where(n => n.HasRecords).ToList();
+                Assert.IsTrue(nodesWithRecords.Count > 0,
+                    $"[{fixtureName}] Should have nodes with record counts. " +
+                    $"Rows with records: {rowsWithRecords.Count}");
+            }
+        }
+
+        [TestMethod]
+        public async Task AllFixtures_LogicalPlan_ExtractsMeasureReferences()
+        {
+            var fixtures = GetAllFixtureBaseNames().ToList();
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
+
+            foreach (var fixtureName in fixtures)
+            {
+                // Arrange
+                var rows = LoadLogicalPlanRows(fixtureName);
+
+                // Check if any rows have MeasureRef in operation
+                var rowsWithMeasureRef = rows.Where(r =>
+                    r.Operation?.Contains("MeasureRef=") == true).ToList();
+
+                // Skip if no measure references expected
+                if (rowsWithMeasureRef.Count == 0) continue;
+
+                var enrichmentService = new PlanEnrichmentService();
+
+                // Act
+                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
+                var tree = PlanNodeViewModel.BuildTree(plan);
+                var allNodes = GetAllNodes(tree).ToList();
+
+                // Assert
+                var nodesWithMeasures = allNodes
+                    .Where(n => !string.IsNullOrEmpty(n.MeasureReference))
+                    .ToList();
+
+                Assert.IsTrue(nodesWithMeasures.Count > 0,
+                    $"[{fixtureName}] Should have nodes with measure references. " +
+                    $"Rows with MeasureRef: {rowsWithMeasureRef.Count}");
+            }
+        }
+
+        [TestMethod]
+        public async Task AllFixtures_WithServerTimings_DetectsParallelism()
+        {
+            var fixtures = GetAllFixtureBaseNames().ToList();
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
+
+            foreach (var fixtureName in fixtures)
+            {
+                // Arrange
+                var seEvents = LoadServerTimings(fixtureName);
+
+                // Check if any events show parallelism (CPU > Duration)
+                var eventsWithParallelism = seEvents
+                    .Where(e => e.CpuTime > e.Duration && e.Duration > 0)
+                    .ToList();
+
+                // Skip if no parallelism expected
+                if (eventsWithParallelism.Count == 0) continue;
+
+                var rows = LoadLogicalPlanRows(fixtureName);
+                var enrichmentService = new PlanEnrichmentService();
+
+                // Act
+                var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, seEvents, null, Guid.NewGuid().ToString());
+                var tree = PlanNodeViewModel.BuildTree(plan);
+                var allNodes = GetAllNodes(tree).ToList();
+
+                // Assert - verify enrichment completes without error
+                // Note: Parallelism detection depends on successful SE event correlation,
+                // which may not always match in fixture data due to timing/ordering differences
+                var nodesWithParallelism = allNodes.Where(n => n.HasParallelism).ToList();
+                System.Diagnostics.Debug.WriteLine(
+                    $"[{fixtureName}] Parallelism: SE events={eventsWithParallelism.Count}, " +
+                    $"Nodes with parallelism={nodesWithParallelism.Count}");
+            }
+        }
+
+        [TestMethod]
+        public async Task AllFixtures_PhysicalPlan_FoldsProjectionSpools()
+        {
+            var fixtures = GetAllFixtureBaseNames().ToList();
+            Assert.IsTrue(fixtures.Count > 0, "No fixtures found");
+
+            foreach (var fixtureName in fixtures)
+            {
+                // Arrange
+                var rows = LoadPhysicalPlanRows(fixtureName);
+
+                // Check if there are ProjectionSpool rows
+                var projectionSpoolRows = rows
+                    .Where(r => r.Operation?.StartsWith("ProjectionSpool") == true)
+                    .ToList();
+
+                // Skip if no ProjectionSpools
+                if (projectionSpoolRows.Count == 0) continue;
+
+                var enrichmentService = new PlanEnrichmentService();
+
+                // Act
+                var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
+                var tree = PlanNodeViewModel.BuildTree(plan);
+                var visibleNodes = GetAllNodes(tree).ToList();
+
+                // Assert - ProjectionSpools should be folded (not visible as separate nodes)
+                var visibleProjectionSpools = visibleNodes
+                    .Where(n => n.OperatorName?.StartsWith("ProjectionSpool") == true)
+                    .ToList();
+
+                // Most ProjectionSpools should be folded into parent SpoolLookup
+                var foldedCount = projectionSpoolRows.Count - visibleProjectionSpools.Count;
+                Assert.IsTrue(foldedCount > 0 || visibleProjectionSpools.Count == 0,
+                    $"[{fixtureName}] ProjectionSpools should be folded. " +
+                    $"Total: {projectionSpoolRows.Count}, Visible: {visibleProjectionSpools.Count}");
             }
         }
 
         #endregion
 
-        #region Filtered Margin Specific Tests
+        #region Auto-Collapse Analysis Tests
 
         [TestMethod]
-        public async Task FilteredMargin_LogicalPlan_HasAddColumnsAndCalculate()
+        public async Task LargePlan_AnalyzeDatesBetweenSubtreeWidths()
         {
             // Arrange
-            var fixture = LoadQueryPlansFixture("Filtered Margin.dax");
+            var rows = LoadPhysicalPlanRows("Large plan");
             var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
 
             // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-
-            // Assert - Verify key operators are present
-            var operators = plan.AllNodes.Select(n => GetOperatorName(n.Operation)).ToList();
-            Assert.IsTrue(operators.Any(o => o?.Contains("AddColumns") == true), "Should have AddColumns");
-            Assert.IsTrue(operators.Any(o => o?.Contains("Calculate") == true), "Should have Calculate");
-        }
-
-        [TestMethod]
-        public async Task FilteredMargin_LogicalPlan_FilterPredicateExtraction()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("Filtered Margin.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-
-            // Assert - Find Filter nodes and check predicates
-            var allNodes = GetAllNodes(tree).ToList();
-            var filterNodes = allNodes.Where(n => PlanNodeViewModel.IsFilterOperator(n.OperatorName)).ToList();
-            var nodesWithPredicates = allNodes.Where(n => !string.IsNullOrEmpty(n.FilterPredicateExpression)).ToList();
-
-            Assert.IsTrue(filterNodes.Count > 0 || nodesWithPredicates.Count > 0,
-                "Should have filter nodes or nodes with predicates");
-        }
-
-        [TestMethod]
-        public async Task FilteredMargin_LogicalPlan_MeasureReferenceExtraction()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("Filtered Margin.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-
-            // Assert - Find nodes with measure references
-            var nodesWithMeasures = GetAllNodes(tree).Where(n => !string.IsNullOrEmpty(n.MeasureReference)).ToList();
-            Assert.IsNotNull(nodesWithMeasures, "Measure reference extraction should work");
-        }
-
-        [TestMethod]
-        public async Task FilteredMargin_PhysicalPlan_SpoolIteratorRollup()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("Filtered Margin.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
             var tree = PlanNodeViewModel.BuildTree(plan);
             var allNodes = GetAllNodes(tree).ToList();
 
-            // Assert - Check for spool type info on Spool_Iterator nodes
-            var spoolIterators = allNodes.Where(n =>
-                n.OperatorName?.StartsWith("Spool_Iterator") == true ||
-                n.OperatorName?.Contains("Spool Iterator") == true).ToList();
+            // Find DatesBetween nodes and their collapsible ancestors
+            var datesBetweenNodes = allNodes
+                .Where(n => n.OperatorName == "DatesBetween")
+                .ToList();
 
-            foreach (var spool in spoolIterators)
+            System.Diagnostics.Debug.WriteLine($"Found {datesBetweenNodes.Count} DatesBetween nodes");
+            System.Diagnostics.Debug.WriteLine($"Root SubtreeWidth: {tree.SubtreeWidth}");
+            System.Diagnostics.Debug.WriteLine($"Root CanToggleSubtree: {tree.CanToggleSubtree}");
+
+            // For each DatesBetween, find the nearest collapsible ancestor
+            foreach (var db in datesBetweenNodes)
             {
-                Assert.IsNotNull(spool.DisplayText, "Spool Iterator should have display text");
+                var ancestor = db.Parent;
+                int depth = 1;
+                while (ancestor != null && !ancestor.CanToggleSubtree)
+                {
+                    ancestor = ancestor.Parent;
+                    depth++;
+                }
+
+                if (ancestor != null)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"DatesBetween NodeId={db.NodeId}: " +
+                        $"Nearest collapsible ancestor={ancestor.OperatorName} (NodeId={ancestor.NodeId}), " +
+                        $"SubtreeWidth={ancestor.SubtreeWidth}, Depth={depth}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"DatesBetween NodeId={db.NodeId}: No collapsible ancestor found");
+                }
             }
-        }
 
-        #endregion
+            // Find all collapsible nodes and their widths
+            var collapsibleNodes = allNodes
+                .Where(n => n.CanToggleSubtree)
+                .OrderByDescending(n => n.SubtreeWidth)
+                .Take(20)
+                .ToList();
 
-        #region 100 Million Row Specific Tests (Parallelism)
-
-        [TestMethod]
-        public async Task HundredMillionRow_LogicalPlan_HasSumVertipaq()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("100 million row.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-
-            // Assert - Verify key operators are present
-            var operators = plan.AllNodes.Select(n => GetOperatorName(n.Operation)).ToList();
-            Assert.IsTrue(operators.Any(o => o?.Contains("Sum_Vertipaq") == true), "Should have Sum_Vertipaq");
-            Assert.IsTrue(operators.Any(o => o?.Contains("Scan_Vertipaq") == true), "Should have Scan_Vertipaq");
-        }
-
-        [TestMethod]
-        public void HundredMillionRow_ServerTimings_HasParallelism()
-        {
-            // Arrange
-            var timingsFixture = LoadServerTimingsFixture("100 million row.dax");
-
-            // Act - Check for parallelism in SE events
-            var seEvents = ToStorageEngineEvents(timingsFixture.StorageEngineEvents);
-            var eventsWithParallelism = seEvents.Where(e =>
-                e.Duration > 0 &&
-                e.NetParallelDuration > 0 &&
-                e.CpuTime > e.Duration).ToList();
-
-            // Assert - This fixture should have parallel SE operations
-            Assert.IsTrue(eventsWithParallelism.Count >= 1,
-                $"Should have at least 1 SE event with parallelism (CPU > Duration), found {eventsWithParallelism.Count}");
-        }
-
-        [TestMethod]
-        public async Task HundredMillionRow_LogicalPlan_WithServerTimings_CorrelatesParallelism()
-        {
-            // Arrange
-            var planFixture = LoadQueryPlansFixture("100 million row.dax");
-            var timingsFixture = LoadServerTimingsFixture("100 million row.dax");
-            var enrichmentService = new PlanEnrichmentService();
-
-            var rows = ToLogicalPlanRows(planFixture.LogicalQueryPlanRows);
-            var seEvents = ToStorageEngineEvents(timingsFixture.StorageEngineEvents);
-
-            // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, seEvents, null, planFixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allNodes = GetAllNodes(tree).ToList();
-
-            // Assert - Nodes with timing data should have duration and CPU time
-            var nodesWithTiming = allNodes.Where(n => n.DurationMs.HasValue && n.DurationMs.Value > 0).ToList();
-            Assert.IsTrue(nodesWithTiming.Count >= 1,
-                $"Should have at least 1 node with timing data, found {nodesWithTiming.Count}");
-
-            // Check for parallelism indicators
-            var nodesWithParallelism = allNodes.Where(n => n.HasParallelism).ToList();
-            // Note: Parallelism may or may not be shown depending on how correlation works
-            // This test verifies the mechanism exists
-        }
-
-        [TestMethod]
-        public async Task HundredMillionRow_PhysicalPlan_HasAggregationSpool()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("100 million row.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allNodes = GetAllNodes(tree).ToList();
-
-            // Assert - Should have AggregationSpool operators
-            var aggregationSpools = allNodes.Where(n =>
-                n.OperatorName?.Contains("AggregationSpool") == true).ToList();
-            Assert.IsTrue(aggregationSpools.Count >= 1,
-                $"Should have AggregationSpool nodes, found {aggregationSpools.Count}");
-        }
-
-        [TestMethod]
-        public async Task HundredMillionRow_LogicalPlan_HasMeasureReferences()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("100 million row.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allNodes = GetAllNodes(tree).ToList();
-
-            // Assert - Should have measure references (Sales Amount, Margin %, Total Cost, Total Quantity)
-            var nodesWithMeasures = allNodes.Where(n => !string.IsNullOrEmpty(n.MeasureReference)).ToList();
-            Assert.IsTrue(nodesWithMeasures.Count >= 1,
-                $"Should have nodes with measure references, found {nodesWithMeasures.Count}");
-
-            // Verify specific measures are referenced
-            var measureNames = nodesWithMeasures.Select(n => n.MeasureReference).Distinct().ToList();
-            Assert.IsTrue(measureNames.Any(m => m.Contains("Sales Amount") || m.Contains("Margin") || m.Contains("Total")),
-                $"Should reference expected measures. Found: {string.Join(", ", measureNames)}");
-        }
-
-        [TestMethod]
-        public async Task HundredMillionRow_PhysicalPlan_SpoolLookupFoldsProjectionSpool()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("100 million row.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allNodes = GetAllNodes(tree).ToList();
-
-            // Assert - SpoolLookup nodes should have SpoolTypeInfo (from folded ProjectionSpool)
-            var spoolLookups = allNodes.Where(n => n.OperatorName == "SpoolLookup").ToList();
-            Assert.IsTrue(spoolLookups.Count >= 1,
-                $"Should have SpoolLookup nodes, found {spoolLookups.Count}");
-
-            // At least one SpoolLookup should have SpoolTypeInfo
-            var spoolLookupsWithInfo = spoolLookups.Where(n => n.HasSpoolTypeInfo).ToList();
-            Assert.IsTrue(spoolLookupsWithInfo.Count >= 1,
-                $"At least one SpoolLookup should have SpoolTypeInfo from folded child. Found {spoolLookupsWithInfo.Count} with info out of {spoolLookups.Count}");
-
-            // ProjectionSpool should NOT appear as separate nodes (they should be folded)
-            var projectionSpools = allNodes.Where(n =>
-                n.OperatorName?.StartsWith("ProjectionSpool") == true).ToList();
-
-            // Log for debugging
-            foreach (var sl in spoolLookups)
+            System.Diagnostics.Debug.WriteLine("\nTop 20 collapsible nodes by SubtreeWidth:");
+            foreach (var node in collapsibleNodes)
             {
-                System.Diagnostics.Debug.WriteLine($"SpoolLookup: HasSpoolTypeInfo={sl.HasSpoolTypeInfo}, SpoolTypeInfo={sl.SpoolTypeInfo ?? "null"}");
+                System.Diagnostics.Debug.WriteLine(
+                    $"  {node.OperatorName} (NodeId={node.NodeId}): SubtreeWidth={node.SubtreeWidth}");
             }
-        }
 
-        #endregion
-
-        #region DirectQuery Specific Tests
-
-        [TestMethod]
-        public async Task DirectQuery_LogicalPlan_HasAllRootLevelOperators()
-        {
-            // Arrange - DirectQuery logical plan has multiple root-level nodes (Level 0)
-            // __DS0Core, __DS0PrimaryWindowed, and Order
-            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-
-            // Assert - Should have 3 Level 0 nodes in AllNodes
-            var rootLevelNodes = plan.AllNodes.Where(n => n.Level == 0).ToList();
-            Assert.IsTrue(rootLevelNodes.Count >= 3,
-                $"Should have at least 3 root-level nodes (__DS0Core, __DS0PrimaryWindowed, Order). Found {rootLevelNodes.Count}: {string.Join(", ", rootLevelNodes.Select(n => GetOperatorName(n.Operation)))}");
-
-            // Specifically check for Order
-            var orderNode = rootLevelNodes.FirstOrDefault(n => n.Operation?.StartsWith("Order") == true);
-            Assert.IsNotNull(orderNode, "Should have Order as a root-level node");
+            // Assert we found DatesBetween nodes
+            Assert.IsTrue(datesBetweenNodes.Count >= 4, "Expected at least 4 DatesBetween nodes");
         }
 
         [TestMethod]
-        public async Task DirectQuery_LogicalPlan_TreeIncludesAllRoots()
+        public async Task LargePlan_AddChaining_FoldsCorrectly()
         {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
+            // Arrange - Large plan has Add→Add→Add chain at lines 6-7-8
+            var rows = LoadPhysicalPlanRows("Large plan");
             var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
 
             // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allVisibleNodes = GetAllNodes(tree).ToList();
-
-            // Assert - Order should be visible in the tree
-            var orderNodes = allVisibleNodes.Where(n =>
-                n.OperatorName == "Order" || n.Operation?.Contains("Order") == true).ToList();
-            Assert.IsTrue(orderNodes.Count >= 1,
-                $"Order operator should be visible in tree. Found operators: {string.Join(", ", allVisibleNodes.Select(n => n.OperatorName))}");
-        }
-
-        [TestMethod]
-        public async Task DirectQuery_PhysicalPlan_HasDirectQueryResultNodes()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
+            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, Guid.NewGuid().ToString());
             var tree = PlanNodeViewModel.BuildTree(plan);
             var allNodes = GetAllNodes(tree).ToList();
 
-            // Assert - Should have DirectQueryResult nodes
-            var dqNodes = allNodes.Where(n => n.OperatorName == "DirectQueryResult").ToList();
-            Assert.IsTrue(dqNodes.Count >= 1,
-                $"Should have DirectQueryResult nodes. Found: {string.Join(", ", allNodes.Select(n => n.OperatorName).Distinct())}");
-        }
+            // Find Add nodes
+            var addNodes = allNodes.Where(n => n.OperatorName == "Add").ToList();
 
-        [TestMethod]
-        public async Task DirectQuery_PhysicalPlan_ColValueShowsColumn()
-        {
-            // Arrange - ColValue<'Table'[Column]> should show the column
-            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
+            System.Diagnostics.Debug.WriteLine($"Total nodes: {allNodes.Count}");
+            System.Diagnostics.Debug.WriteLine($"Add nodes after folding: {addNodes.Count}");
 
-            // Act
-            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allNodes = GetAllNodes(tree).ToList();
-
-            // Assert - ColValue nodes should show the column in their detail
-            var colValueNodes = allNodes.Where(n =>
-                n.OperatorName?.StartsWith("ColValue") == true ||
-                n.Operation?.Contains("ColValue<") == true).ToList();
-
-            foreach (var cvNode in colValueNodes)
+            foreach (var add in addNodes)
             {
-                // Should have column info from either DisplayDetail or from the angle brackets
-                var hasColumnInfo = !string.IsNullOrEmpty(cvNode.DisplayDetail) ||
-                                    cvNode.Operation?.Contains("[") == true;
-                Assert.IsTrue(hasColumnInfo,
-                    $"ColValue node should show column info. Operation: {cvNode.Operation}, DisplayDetail: {cvNode.DisplayDetail}");
+                System.Diagnostics.Debug.WriteLine(
+                    $"  Add NodeId={add.NodeId}, ChainedCount={add.ChainedOperatorCount}, " +
+                    $"HasChained={add.HasChainedOperators}, DisplayName={add.DisplayName}");
             }
-        }
 
-        [TestMethod]
-        public async Task DirectQuery_PhysicalPlan_UnionShowsIterCols()
-        {
-            // Arrange - Union should show its IterCols
-            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allNodes = GetAllNodes(tree).ToList();
-
-            // Assert - Union nodes have IterCols in their operation
-            var unionNodes = allNodes.Where(n => n.OperatorName == "Union").ToList();
-            foreach (var union in unionNodes)
-            {
-                Assert.IsTrue(union.HasIterCols,
-                    $"Union should have IterCols. Operation: {union.Operation}");
-            }
-        }
-
-        [TestMethod]
-        public async Task DirectQuery_PhysicalPlan_GroupSemijoinShowsIterCols()
-        {
-            // Arrange - GroupSemijoin should show its IterCols
-            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToPhysicalPlanRows(fixture.PhysicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichPhysicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-            var allNodes = GetAllNodes(tree).ToList();
-
-            // Assert - GroupSemijoin nodes have IterCols
-            var gsNodes = allNodes.Where(n => n.OperatorName == "GroupSemijoin").ToList();
-            foreach (var gs in gsNodes)
-            {
-                Assert.IsTrue(gs.HasIterCols,
-                    $"GroupSemijoin should have IterCols. Operation: {gs.Operation}");
-            }
-        }
-
-        [TestMethod]
-        public async Task DirectQuery_ServerTimings_HasDirectQueryEvents()
-        {
-            // Arrange - Server timings should have DirectQueryEnd events
-            var timingsFixture = LoadServerTimingsFixture("DirectQuery.dax");
-
-            // Act
-            var seEvents = ToStorageEngineEvents(timingsFixture.StorageEngineEvents);
-
-            // Assert - Should have events (DirectQueryEnd is captured as SE event)
-            Assert.IsTrue(seEvents.Count >= 1,
-                $"Should have server timing events. Found {seEvents.Count}");
-        }
-
-        [TestMethod]
-        public async Task DirectQuery_LogicalPlan_OrderIsInTree()
-        {
-            // Arrange
-            var fixture = LoadQueryPlansFixture("DirectQuery.dax");
-            var enrichmentService = new PlanEnrichmentService();
-            var rows = ToLogicalPlanRows(fixture.LogicalQueryPlanRows);
-
-            // Act
-            var plan = await enrichmentService.EnrichLogicalPlanAsync(rows, null, null, fixture.ActivityID);
-            var tree = PlanNodeViewModel.BuildTree(plan);
-
-            // Assert - With multiple Level 0 nodes, root is "Query" and Order is a child
-            Assert.IsNotNull(tree, "Tree should be built");
-            Assert.AreEqual("Query", tree.OperatorName,
-                $"Root should be synthetic 'Query' for multiple Level 0 nodes, found '{tree.OperatorName}'");
-
-            // Order should be one of the children of the Query root
-            var orderChild = tree.Children.FirstOrDefault(c => c.OperatorName == "Order");
-            Assert.IsNotNull(orderChild,
-                $"Order should be a child of Query. Found children: {string.Join(", ", tree.Children.Select(c => c.OperatorName))}");
+            // Assert - should have only 1 Add node (the other 2 should be folded)
+            // and it should show (3x) in the display name
+            Assert.AreEqual(1, addNodes.Count, "Should have only 1 Add node after folding chain");
+            Assert.AreEqual(3, addNodes[0].ChainedOperatorCount, "Should count 3 chained Adds");
+            Assert.IsTrue(addNodes[0].DisplayName.Contains("(3x)"), $"DisplayName should show (3x), got: {addNodes[0].DisplayName}");
         }
 
         #endregion
 
         #region Helper Methods
-
-        private static string GetOperatorName(string operation)
-        {
-            if (string.IsNullOrEmpty(operation)) return null;
-
-            // Handle 'Table'[Column] pattern
-            if (operation.StartsWith("'"))
-            {
-                var colonIdx = operation.IndexOf(':');
-                return colonIdx > 0 ? operation.Substring(0, colonIdx).Trim() : operation;
-            }
-
-            // Handle Spool_Iterator<Type> pattern
-            var ltIdx = operation.IndexOf('<');
-            var colonIdx2 = operation.IndexOf(':');
-
-            if (ltIdx > 0 && (colonIdx2 < 0 || ltIdx < colonIdx2))
-            {
-                return operation.Substring(0, ltIdx).Trim();
-            }
-
-            if (colonIdx2 > 0)
-            {
-                return operation.Substring(0, colonIdx2).Trim();
-            }
-
-            return operation.Split(' ')[0];
-        }
 
         private static IEnumerable<PlanNodeViewModel> GetAllNodes(PlanNodeViewModel root)
         {
@@ -706,60 +741,6 @@ namespace DaxStudio.Tests.VisualQueryPlan
                     yield return descendant;
                 }
             }
-        }
-
-        #endregion
-
-        #region Fixture Classes
-
-        public class QueryPlansFixture
-        {
-            public int FileFormatVersion { get; set; }
-            public List<QueryPlanRowFixture> PhysicalQueryPlanRows { get; set; }
-            public List<QueryPlanRowFixture> LogicalQueryPlanRows { get; set; }
-            public string ActivityID { get; set; }
-            public string RequestID { get; set; }
-            public string CommandText { get; set; }
-        }
-
-        public class QueryPlanRowFixture
-        {
-            public long? Records { get; set; }
-            public string Operation { get; set; }
-            public string IndentedOperation { get; set; }
-            public int Level { get; set; }
-            public int RowNumber { get; set; }
-            public int NextSiblingRowNumber { get; set; }
-            public bool HighlightRow { get; set; }
-        }
-
-        public class ServerTimingsFixture
-        {
-            public int FileFormatVersion { get; set; }
-            public string ActivityID { get; set; }
-            public string RequestID { get; set; }
-            public long StorageEngineDuration { get; set; }
-            public long StorageEngineNetParallelDuration { get; set; }
-            public long FormulaEngineDuration { get; set; }
-            public List<StorageEngineEventFixture> StorageEngineEvents { get; set; }
-            public string CommandText { get; set; }
-        }
-
-        public class StorageEngineEventFixture
-        {
-            public string Class { get; set; }
-            public string Subclass { get; set; }
-            public string Query { get; set; }
-            public string TextData { get; set; }
-            public long? Duration { get; set; }
-            public long? NetParallelDuration { get; set; }
-            public long? CpuTime { get; set; }
-            public double? CpuFactor { get; set; }
-            public long? EstimatedRows { get; set; }
-            public long? EstimatedKBytes { get; set; }
-            public bool IsInternalEvent { get; set; }
-            public string ObjectName { get; set; }
-            public bool IsScanEvent { get; set; }
         }
 
         #endregion

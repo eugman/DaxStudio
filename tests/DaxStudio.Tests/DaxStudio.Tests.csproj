@@ -147,6 +147,7 @@
     <Compile Include="VisualQueryPlan\PlanNodeViewModelTests.cs" />
     <Compile Include="VisualQueryPlan\PropertyExtractionTests.cs" />
     <Compile Include="VisualQueryPlan\XmSqlParserTests.cs" />
+    <Compile Include="VisualQueryPlan\ZoomHelperTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ADOTabular\DaxStudio.ADOTabular.csproj">

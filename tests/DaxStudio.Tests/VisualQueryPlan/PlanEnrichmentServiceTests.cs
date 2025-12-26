@@ -766,6 +766,234 @@ namespace DaxStudio.Tests.VisualQueryPlan
 
         #endregion
 
+        #region Engine Type Classification Tests
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SpoolIteratorWithLogOpVertipaq_ShouldBeFE()
+        {
+            // Arrange - Spool_Iterator with LogOp=Scan_Vertipaq should be FE, not SE
+            // The LogOp= is just a reference to the logical operator, but the physical operator itself is FE
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var spoolNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, spoolNode.EngineType,
+                "Spool_Iterator with LogOp=Scan_Vertipaq should be FE - the LogOp is just a reference to the logical operator");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_ScanVertipaq_ShouldBeSE()
+        {
+            // Arrange - Scan_Vertipaq as the primary operator (not in LogOp=) should be SE
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp DependOnCols()() RequiredCols(0)('Customer'[Name])", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, scanNode.EngineType,
+                "Scan_Vertipaq as primary operator should be SE");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_VertipaqResult_ShouldBeSE()
+        {
+            // Arrange - VertipaqResult is the only SE physical operator with IterPhyOp suffix
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("VertipaqResult: IterPhyOp #Records=1000", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var resultNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, resultNode.EngineType,
+                "VertipaqResult is the only SE physical operator with IterPhyOp suffix");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_ProjectionSpoolWithIterPhyOp_ShouldBeFE()
+        {
+            // Arrange - ProjectionSpool is FE even though it might reference Vertipaq in LogOp
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=5647", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var spoolNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, spoolNode.EngineType,
+                "ProjectionSpool with SpoolPhyOp should be FE");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_AggregationSpoolWithSpoolPhyOp_ShouldBeFE()
+        {
+            // Arrange - AggregationSpool is FE
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var aggNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, aggNode.EngineType,
+                "AggregationSpool with SpoolPhyOp should be FE");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SpoolLookupWithLookupPhyOp_ShouldBeFE()
+        {
+            // Arrange - SpoolLookup with LookupPhyOp is FE even if LogOp references Vertipaq
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq Currency #Records=1 #KeyCols=247", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var lookupNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, lookupNode.EngineType,
+                "SpoolLookup with LookupPhyOp should be FE even if LogOp=Sum_Vertipaq");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_CrossApplyWithIterPhyOp_ShouldBeFE()
+        {
+            // Arrange - CrossApply is FE even if LogOp references Vertipaq
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[Key], 'Date'[Date])", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var crossApplyNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, crossApplyNode.EngineType,
+                "CrossApply with IterPhyOp should be FE even if LogOp=Scan_Vertipaq");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_CacheWithIterPhyOp_ShouldBeSE()
+        {
+            // Arrange - Cache operators are typically SE (they represent data caches)
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Cache: IterPhyOp #FieldCols=1 #ValueCols=1", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var cacheNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, cacheNode.EngineType,
+                "Cache operators represent SE datacaches");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_MixedPlan_CorrectlyClassifiesAllNodes()
+        {
+            // Arrange - Plan with a mix of SE and FE operators
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("AddColumns: IterPhyOp LogOp=AddColumns", 1);
+            rows.Add(row1);
+
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tSpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq #Records=1", 2);
+            rows.Add(row2);
+
+            var row3 = new PhysicalQueryPlanRow();
+            row3.PrepareQueryPlanRow("\t\tProjectionSpool<Copy>: SpoolPhyOp #Records=5647", 3);
+            rows.Add(row3);
+
+            var row4 = new PhysicalQueryPlanRow();
+            row4.PrepareQueryPlanRow("\t\t\tCache: IterPhyOp #FieldCols=1", 4);
+            rows.Add(row4);
+
+            var row5 = new PhysicalQueryPlanRow();
+            row5.PrepareQueryPlanRow("\t\t\t\tSpool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq #Records=18869", 5);
+            rows.Add(row5);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var addColumns = result.AllNodes.First(n => n.Operation.Contains("AddColumns"));
+            var spoolLookup = result.AllNodes.First(n => n.Operation.Contains("SpoolLookup"));
+            var projectionSpool = result.AllNodes.First(n => n.Operation.Contains("ProjectionSpool"));
+            var cache = result.AllNodes.First(n => n.Operation.StartsWith("Cache:"));
+            var spoolIterator = result.AllNodes.First(n => n.Operation.Contains("Spool_Iterator"));
+
+            Assert.AreEqual(EngineType.FormulaEngine, addColumns.EngineType, "AddColumns should be FE");
+            Assert.AreEqual(EngineType.FormulaEngine, spoolLookup.EngineType, "SpoolLookup should be FE");
+            Assert.AreEqual(EngineType.FormulaEngine, projectionSpool.EngineType, "ProjectionSpool should be FE");
+            Assert.AreEqual(EngineType.StorageEngine, cache.EngineType, "Cache should be SE");
+            Assert.AreEqual(EngineType.FormulaEngine, spoolIterator.EngineType, "Spool_Iterator with LogOp=Scan_Vertipaq should be FE");
+        }
+
+        #endregion
+
         #region Helper Methods for New Tests
 
         private BindableCollection<PhysicalQueryPlanRow> CreatePlanWithScanNodes()
