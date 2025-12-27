@@ -243,7 +243,7 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
-        public void DetectIssues_WithSameRowCountInSiblings_KeepsBothIssues()
+        public void DetectIssues_WithSameRowCountInSiblings_AggregatesIntoOne()
         {
             // Arrange - two siblings have the same row count (no ancestor relationship)
             var parent = new EnrichedPlanNode
@@ -272,9 +272,10 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var issues = _detector.DetectIssues(plan);
 
-            // Assert - should have 2 issues (siblings, not ancestor-descendant)
+            // Assert - should have 1 aggregated issue (multiple siblings with same row count)
             var materializationIssues = issues.Where(i => i.IssueType == IssueType.ExcessiveMaterialization).ToList();
-            Assert.AreEqual(2, materializationIssues.Count, "Siblings should not be deduped");
+            Assert.AreEqual(1, materializationIssues.Count, "Siblings with same row count should be aggregated into one issue");
+            Assert.IsTrue(materializationIssues[0].Description.Contains("2 Spool"), "Should indicate count in description");
         }
     }
 }

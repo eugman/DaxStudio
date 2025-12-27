@@ -14,6 +14,7 @@ using DaxStudio.Common;
 using DaxStudio.Common.Enums;
 using DaxStudio.Interfaces;
 using DaxStudio.QueryTrace;
+using DaxStudio.UI.AttachedProperties;
 using DaxStudio.UI.Events;
 using DaxStudio.UI.Extensions;
 using DaxStudio.UI.Interfaces;
@@ -688,46 +689,61 @@ namespace DaxStudio.UI.ViewModels
 
             if (collapsedNodes.Count == 0) return;
 
-            foreach (var node in collapsedNodes)
+            // Suspend animations during bulk operation
+            CanvasPositionAnimation.SuspendAnimations = true;
+            try
             {
-                node.IsSubtreeCollapsed = false;
+                foreach (var node in collapsedNodes)
+                {
+                    node.IsSubtreeCollapsed = false;
+                }
+
+                RefreshLayoutAfterToggle();
+            }
+            finally
+            {
+                CanvasPositionAnimation.SuspendAnimations = false;
             }
 
-            RefreshLayoutAfterToggle();
             NotifyOfPropertyChange(nameof(HasCollapsedNodes));
             NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
         }
 
         /// <summary>
-        /// Collapses all collapsible subtrees using the auto-collapse algorithm.
+        /// Collapses all collapsible subtrees (every node that can be collapsed).
         /// </summary>
         public void CollapseAll()
         {
             if (RootNode == null) return;
 
-            // First expand everything to reset state
-            var collapsedNodes = GetAllNodesRecursive(RootNode)
-                .Where(n => n.IsSubtreeCollapsed)
-                .ToList();
-
-            foreach (var node in collapsedNodes)
+            // Suspend animations during bulk operation
+            CanvasPositionAnimation.SuspendAnimations = true;
+            try
             {
-                node.IsSubtreeCollapsed = false;
+                // Collapse all nodes that can be toggled
+                var collapsibleNodes = GetAllNodesRecursive(RootNode)
+                    .Where(n => n.CanToggleSubtree && !n.IsSubtreeCollapsed)
+                    .ToList();
+
+                foreach (var node in collapsibleNodes)
+                {
+                    node.IsSubtreeCollapsed = true;
+                }
+
+                RefreshLayoutAfterToggle();
+            }
+            finally
+            {
+                CanvasPositionAnimation.SuspendAnimations = false;
             }
 
-            // Invalidate subtree widths since collapse state changed
-            RootNode.InvalidateSubtreeWidth();
-
-            // Now run auto-collapse
-            AutoCollapseSubtrees(RootNode);
-
-            RefreshLayoutAfterToggle();
             NotifyOfPropertyChange(nameof(HasCollapsedNodes));
             NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
         }
 
         /// <summary>
         /// Expands paths to all nodes that have issues, making them visible.
+        /// Also scrolls to make the first issue node visible.
         /// </summary>
         public void ExpandIssueNodes()
         {
@@ -736,19 +752,38 @@ namespace DaxStudio.UI.ViewModels
             // Get all unique node IDs that have issues
             var issueNodeIds = Issues.Select(i => i.AffectedNodeId).Distinct().ToList();
 
-            // Find each node and expand the path to it
-            foreach (var nodeId in issueNodeIds)
+            // Suspend animations during bulk operation
+            CanvasPositionAnimation.SuspendAnimations = true;
+            PlanNodeViewModel firstIssueNode = null;
+            try
             {
-                var node = FindNodeInTree(RootNode, nodeId);
-                if (node != null)
+                // Find each node and expand the path to it
+                foreach (var nodeId in issueNodeIds)
                 {
-                    node.ExpandPathToRoot();
+                    var node = FindNodeInTree(RootNode, nodeId);
+                    if (node != null)
+                    {
+                        node.ExpandPathToRoot();
+                        if (firstIssueNode == null)
+                            firstIssueNode = node;
+                    }
                 }
+
+                RefreshLayoutAfterToggle();
+            }
+            finally
+            {
+                CanvasPositionAnimation.SuspendAnimations = false;
             }
 
-            RefreshLayoutAfterToggle();
             NotifyOfPropertyChange(nameof(HasCollapsedNodes));
             NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
+
+            // Scroll to make the first issue node visible
+            if (firstIssueNode != null)
+            {
+                ScrollNodeIntoView(firstIssueNode);
+            }
         }
 
         /// <summary>
@@ -1016,6 +1051,9 @@ namespace DaxStudio.UI.ViewModels
                 return;
             }
 
+            // Suspend animations during full plan rebuild (switching physical/logical or initial load)
+            CanvasPositionAnimation.SuspendAnimations = true;
+
             var totalSw = System.Diagnostics.Stopwatch.StartNew();
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
@@ -1083,6 +1121,9 @@ namespace DaxStudio.UI.ViewModels
             NotifyOfPropertyChange(nameof(IssueCount));
 
             NotifyOfPropertyChange(nameof(HasPlanData));
+
+            // Re-enable animations now that layout is complete
+            CanvasPositionAnimation.SuspendAnimations = false;
 
             // Notify view to adjust scroll position if needed
             PlanLayoutUpdated?.Invoke(this, System.EventArgs.Empty);

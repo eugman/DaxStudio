@@ -392,10 +392,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void RowCountSeverity_MediumRecordCount_ReturnsWarning()
         {
             // Arrange - 150K records is between 100K and 1M (Warning threshold)
+            // Note: Only Spool operations trigger warnings (not Vertipaq scans)
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
-                Operation = "Test: Op",
+                Operation = "Spool_Iterator: Test Op",
                 Records = 150000
             };
             var node = new PlanNodeViewModel(enrichedNode);
@@ -408,10 +409,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void RowCountSeverity_LargeRecordCount_ReturnsCritical()
         {
             // Arrange - 1.5M records exceeds 1M threshold (Critical)
+            // Note: Only Spool operations trigger critical (not Vertipaq scans)
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
-                Operation = "Test: Op",
+                Operation = "Spool_Iterator: Test Op",
                 Records = 1500000
             };
             var node = new PlanNodeViewModel(enrichedNode);
@@ -450,10 +452,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void RowCountColor_WarningSeverity_ReturnsMutedOrange()
         {
             // Arrange - 150K is Warning severity (100K-1M)
+            // Note: Only Spool operations trigger warnings (not Vertipaq scans)
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
-                Operation = "Test: Op",
+                Operation = "Spool_Iterator: Test Op",
                 Records = 150000  // Warning severity
             };
             var node = new PlanNodeViewModel(enrichedNode);
@@ -472,10 +475,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void RowCountColor_CriticalSeverity_ReturnsMutedRed()
         {
             // Arrange - 1.5M is Critical severity (1M+)
+            // Note: Only Spool operations trigger critical (not Vertipaq scans)
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
-                Operation = "Test: Op",
+                Operation = "Spool_Iterator: Test Op",
                 Records = 1500000  // Critical severity
             };
             var node = new PlanNodeViewModel(enrichedNode);
@@ -520,10 +524,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void EdgeColor_WarningSeverity_ReturnsMutedOrange()
         {
             // Arrange - 150K is Warning severity (100K-1M)
+            // Note: Only Spool operations trigger warnings (not Vertipaq scans)
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
-                Operation = "Test: Op",
+                Operation = "Spool_Iterator: Test Op",
                 Records = 150000  // Warning severity
             };
             var node = new PlanNodeViewModel(enrichedNode);
@@ -542,10 +547,11 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void EdgeColor_CriticalSeverity_ReturnsMutedRed()
         {
             // Arrange - 1.5M is Critical severity (1M+)
+            // Note: Only Spool operations trigger critical (not Vertipaq scans)
             var enrichedNode = new EnrichedPlanNode
             {
                 NodeId = 1,
-                Operation = "Test: Op",
+                Operation = "Spool_Iterator: Test Op",
                 Records = 1500000  // Critical severity
             };
             var node = new PlanNodeViewModel(enrichedNode);
@@ -3759,9 +3765,40 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var root = PlanNodeViewModel.BuildTree(plan);
 
-            // Assert - Currently ISERROR may not be handled - this test documents expected behavior
+            // Assert - ISERROR is now handled like ISBLANK via generalized unary predicate support
             Assert.IsNotNull(root);
-            // After generalization, this should fold like ISBLANK
+            Assert.AreEqual("Filter", root.OperatorName);
+            Assert.AreEqual(0, root.Children.Count, "Not and ISERROR should be folded into Filter");
+            Assert.IsTrue(root.HasFilterPredicate, "Filter should have predicate expression");
+            Assert.AreEqual("NOT(ISERROR('Sales'[Amount]))", root.FilterPredicateExpression);
+        }
+
+        [TestMethod]
+        public void BuildTree_StandaloneISNA_ShowsExpression()
+        {
+            // Test that ISNA works like ISBLANK
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "ISNA: IterPhyOp LogOp=ISNA IterCols(1)('Sales'[Amount])",
+                        EngineType = EngineType.FormulaEngine
+                    }
+                }
+            };
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert
+            Assert.IsNotNull(root);
+            Assert.AreEqual("ISNA", root.OperatorName);
+            Assert.IsTrue(root.HasFilterPredicate, "ISNA should have predicate expression");
+            Assert.AreEqual("ISNA('Sales'[Amount])", root.FilterPredicateExpression);
         }
 
         [TestMethod]

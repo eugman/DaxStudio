@@ -19,7 +19,8 @@ namespace DaxStudio.UI.ViewModels
         private readonly EnrichedPlanNode _node;
         private bool _isSelected;
         private bool _isExpanded = true;
-        private Point _position;
+        // Initialize to NaN so animation is skipped on first layout (animation checks for NaN)
+        private Point _position = new Point(double.NaN, double.NaN);
 
         public PlanNodeViewModel(EnrichedPlanNode node)
         {
@@ -432,11 +433,11 @@ namespace DaxStudio.UI.ViewModels
                 // Show records if available and > 0
                 if (_node.Records.HasValue && _node.Records.Value > 0)
                 {
-                    return FormatRecordCount(_node.Records.Value);
+                    return FormatRecordCount(_node.Records.Value, IsApproximateRowCount);
                 }
 
-                // Show duration if available
-                if (_node.DurationMs.HasValue)
+                // Show duration if available and > 0 (don't show 0ms for unknown timings)
+                if (_node.DurationMs.HasValue && _node.DurationMs.Value > 0)
                 {
                     return $"{_node.DurationMs.Value:N0} ms";
                 }
@@ -453,17 +454,20 @@ namespace DaxStudio.UI.ViewModels
         /// <summary>
         /// Formats a record count in a compact human-readable form.
         /// </summary>
-        private string FormatRecordCount(long records)
+        /// <param name="records">The record count to format.</param>
+        /// <param name="approximate">If true, adds a ~ prefix to indicate approximate value.</param>
+        private string FormatRecordCount(long records, bool approximate = false)
         {
+            var prefix = approximate ? "~" : "";
             if (records >= 1_000_000)
             {
-                return $"{records / 1_000_000.0:F1}M rows";
+                return $"{prefix}{records / 1_000_000.0:F1}M rows";
             }
             if (records >= 1_000)
             {
-                return $"{records / 1_000.0:F1}K rows";
+                return $"{prefix}{records / 1_000.0:F1}K rows";
             }
-            return $"{records:N0} rows";
+            return $"{prefix}{records:N0} rows";
         }
 
         /// <summary>
@@ -537,7 +541,8 @@ namespace DaxStudio.UI.ViewModels
 
                 if (_node.Records.HasValue)
                 {
-                    lines.Add($"Records: {_node.Records.Value:N0}");
+                    var prefix = IsApproximateRowCount ? "~" : "";
+                    lines.Add($"Records: {prefix}{_node.Records.Value:N0}");
                 }
 
                 if (_node.CostPercentage.HasValue)
@@ -545,7 +550,8 @@ namespace DaxStudio.UI.ViewModels
                     lines.Add($"Cost: {_node.CostPercentage.Value:F1}%");
                 }
 
-                if (_node.DurationMs.HasValue)
+                // Only show duration if > 0 (don't show 0ms for unknown timings)
+                if (_node.DurationMs.HasValue && _node.DurationMs.Value > 0)
                 {
                     lines.Add($"Duration: {_node.DurationMs.Value:N0} ms");
                 }
@@ -610,9 +616,10 @@ namespace DaxStudio.UI.ViewModels
 
         /// <summary>
         /// Formatted records string for display.
+        /// Adds ~ prefix for approximate values (inferred from Physical or Inherited).
         /// </summary>
         public string RecordsDisplay => _node.Records.HasValue
-            ? $"{_node.Records.Value:N0}"
+            ? $"{(IsApproximateRowCount ? "~" : "")}{_node.Records.Value:N0}"
             : string.Empty;
 
         /// <summary>
@@ -626,7 +633,21 @@ namespace DaxStudio.UI.ViewModels
         public string RecordsSource => _node.RecordsSource ?? "Plan";
 
         /// <summary>
+        /// Whether the row count is approximate (inferred from Physical plan or Inherited).
+        /// When true, displays should use a ~ prefix.
+        /// </summary>
+        public bool IsApproximateRowCount
+        {
+            get
+            {
+                var source = _node.RecordsSource ?? "Plan";
+                return source == "Physical" || source == "Inherited";
+            }
+        }
+
+        /// <summary>
         /// Formatted records display with source annotation.
+        /// Adds ~ prefix for approximate values (inferred from Physical or Inherited).
         /// </summary>
         public string RecordsWithSourceDisplay
         {
@@ -636,9 +657,10 @@ namespace DaxStudio.UI.ViewModels
                     return "No row count";
 
                 var source = _node.RecordsSource ?? "Plan";
+                var prefix = IsApproximateRowCount ? "~" : "";
                 if (source == "Plan")
-                    return $"{_node.Records.Value:N0}";
-                return $"{_node.Records.Value:N0} (from {source})";
+                    return $"{prefix}{_node.Records.Value:N0}";
+                return $"{prefix}{_node.Records.Value:N0} (from {source})";
             }
         }
 
@@ -809,10 +831,10 @@ namespace DaxStudio.UI.ViewModels
         }
 
         /// <summary>
-        /// Severity level based on row count thresholds.
+        /// Severity level based on row count thresholds for FE materialization.
+        /// Only flags Spool operations (FE) - NOT SE Vertipaq scans which are highly optimized.
         /// 100K+ = Warning (yellow), 1M+ = Critical (red)
-        /// Note: Visual coloring is NOT deduped - all nodes with high counts are colored
-        /// to make them easy to spot. Only the issues list is deduped.
+        /// Note: Visual coloring is NOT deduped - all spool nodes with high counts are colored.
         /// </summary>
         public string RowCountSeverity
         {
@@ -820,6 +842,13 @@ namespace DaxStudio.UI.ViewModels
             {
                 if (!_node.Records.HasValue || _node.Records.Value == 0)
                     return "None";
+
+                // Only flag Spool operations (FE materialization) - not SE Vertipaq scans
+                // SE scans are highly optimized/parallelized, the issue is when data crosses to FE
+                var opName = OperatorName ?? "";
+                var isSpool = opName.Contains("Spool") || opName == "Cache";
+                if (!isSpool)
+                    return "Fine";  // SE operations (Scan_Vertipaq, etc.) don't get warnings
 
                 var records = _node.Records.Value;
                 if (records < 100_000)
@@ -874,8 +903,8 @@ namespace DaxStudio.UI.ViewModels
             {
                 var parts = new List<string>();
 
-                // Add duration if we have correlated timing data
-                if (_node.DurationMs.HasValue)
+                // Add duration if we have correlated timing data (> 0, don't show 0ms for unknown)
+                if (_node.DurationMs.HasValue && _node.DurationMs.Value > 0)
                 {
                     parts.Add($"{_node.DurationMs.Value:N0}ms");
                 }
@@ -887,7 +916,8 @@ namespace DaxStudio.UI.ViewModels
                 }
                 else if (_node.Records.HasValue)
                 {
-                    parts.Add($"{_node.Records.Value:N0} rows");
+                    var prefix = IsApproximateRowCount ? "~" : "";
+                    parts.Add($"{prefix}{_node.Records.Value:N0} rows");
                 }
                 else if (parts.Count == 0)
                 {
@@ -2113,9 +2143,9 @@ namespace DaxStudio.UI.ViewModels
 
         /// <summary>
         /// Whether this node can have its subtree toggled.
-        /// Only show collapse button for nodes with 2+ direct children AND subtree width >= 20.
+        /// Only show collapse button for nodes with 2+ direct children AND subtree width >= 6.
         /// </summary>
-        public bool CanToggleSubtree => Children.Count > 1 && SubtreeWidth >= 20;
+        public bool CanToggleSubtree => Children.Count > 1 && SubtreeWidth >= 6;
 
         /// <summary>
         /// Callback invoked when the subtree is toggled (collapsed/expanded).
@@ -2435,7 +2465,7 @@ namespace DaxStudio.UI.ViewModels
             var foldedNodeIds = new HashSet<int>();
             var filterPredicateExpressions = new Dictionary<int, string>();
 
-            // First pass: identify nodes that should be folded into their parent
+            // Pass 1: Identify column reference nodes to fold into parent
             foreach (var node in plan.AllNodes)
             {
                 if (ShouldFoldNode(node))
@@ -2444,7 +2474,7 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Second pass: identify Filter nodes and collect their predicate subtrees
+            // Pass 2: Identify Filter nodes and collect their predicate subtrees
             foreach (var node in plan.AllNodes)
             {
                 var opName = GetOperatorNameFromString(node.Operation);
@@ -2472,8 +2502,8 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Third pass: identify Physical Plan nodes with LogOp=<comparison> (e.g., Extend_Lookup with LogOp=GreaterThan)
-            // These should show the predicate and fold their comparison child nodes
+            // Pass 3: Physical Plan nodes with LogOp=<comparison> (e.g., Extend_Lookup with LogOp=GreaterThan)
+            // Show predicate and fold comparison child nodes
             foreach (var node in plan.AllNodes)
             {
                 // Skip if already processed as a Filter node
@@ -2517,8 +2547,61 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // ISBLANK/Not pass: Handle ISBLANK predicates and Not→ISBLANK chains
-            // Process bottom-up: first ISBLANK nodes, then Not nodes that have ISBLANK children
+            // Pass 4: Unary predicate functions (ISBLANK, ISERROR, ISNA) and Not wrapper folding
+            // Process bottom-up: first unary predicates, then Not nodes wrapping them
+            // Handles both IterCols (physical plan) and DependOnCols (logical plan) patterns
+            var unaryPredicateFunctions = new HashSet<string> { "ISBLANK", "ISERROR", "ISNA" };
+
+            // Helper to extract columns from IterCols or DependOnCols patterns
+            // Returns list of individual column references for multi-column cases
+            List<string> ExtractColumnsFromOperation(string operation)
+            {
+                var result = new List<string>();
+                if (string.IsNullOrEmpty(operation)) return result;
+
+                // Try IterCols first (physical plan): IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+                var iterColsMatch = Regex.Match(operation, @"IterCols\([^)]*\)\(([^)]+)\)");
+                if (iterColsMatch.Success)
+                {
+                    var columnsStr = iterColsMatch.Groups[1].Value;
+                    // Split by comma but preserve column references like 'Table'[Column]
+                    result.AddRange(ParseColumnList(columnsStr));
+                    return result;
+                }
+
+                // Try DependOnCols (logical plan): DependOnCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+                var dependOnColsMatch = Regex.Match(operation, @"DependOnCols\([^)]*\)\(([^)]+)\)");
+                if (dependOnColsMatch.Success)
+                {
+                    var columnsStr = dependOnColsMatch.Groups[1].Value;
+                    result.AddRange(ParseColumnList(columnsStr));
+                }
+
+                return result;
+            }
+
+            // Helper to parse comma-separated column list preserving 'Table'[Column] format
+            List<string> ParseColumnList(string columnsStr)
+            {
+                var result = new List<string>();
+                // Match individual column references: 'TableName'[ColumnName]
+                var colMatches = Regex.Matches(columnsStr, @"'[^']+'\[[^\]]+\]");
+                foreach (Match m in colMatches)
+                {
+                    result.Add(m.Value);
+                }
+                return result;
+            }
+
+            // Helper to build predicate expression for unary function with multiple columns
+            // E.g., ISBLANK with ['Customer'[Key], 'Date'[Date]] -> "ISBLANK('Customer'[Key]), ISBLANK('Date'[Date])"
+            string BuildUnaryPredicateExpression(string funcName, List<string> columns)
+            {
+                if (columns.Count == 0) return null;
+                if (columns.Count == 1) return $"{funcName}({columns[0]})";
+                return string.Join(", ", columns.Select(c => $"{funcName}({c})"));
+            }
+
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -2526,20 +2609,20 @@ namespace DaxStudio.UI.ViewModels
 
                 var opName = GetOperatorNameFromString(node.Operation);
 
-                // Handle standalone ISBLANK - extract columns from IterCols as predicate
-                if (opName == "ISBLANK")
+                // Handle standalone unary predicate functions - extract columns from IterCols or DependOnCols
+                if (unaryPredicateFunctions.Contains(opName))
                 {
-                    var iterColsMatch = Regex.Match(node.Operation ?? "", @"IterCols\([^)]*\)\(([^)]+)\)");
-                    if (iterColsMatch.Success)
+                    var columns = ExtractColumnsFromOperation(node.Operation);
+                    if (columns.Count > 0)
                     {
-                        var columns = iterColsMatch.Groups[1].Value;
-                        filterPredicateExpressions[node.NodeId] = $"ISBLANK({columns})";
-                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: ISBLANK node {NodeId} predicate: ISBLANK({Cols})", node.NodeId, columns);
+                        var predicate = BuildUnaryPredicateExpression(opName, columns);
+                        filterPredicateExpressions[node.NodeId] = predicate;
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: {Op} node {NodeId} predicate: {Pred}", opName, node.NodeId, predicate);
                     }
                 }
             }
 
-            // Now handle Not nodes with ISBLANK children
+            // Now handle Not nodes - either with unary predicate children OR standalone with DependOnCols
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -2550,36 +2633,52 @@ namespace DaxStudio.UI.ViewModels
                 if (opName == "Not")
                 {
                     var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId && !foldedNodeIds.Contains(n.NodeId)).ToList();
-                    var isblankChild = children.FirstOrDefault(c => GetOperatorNameFromString(c.Operation) == "ISBLANK");
+                    var predicateChild = children.FirstOrDefault(c => unaryPredicateFunctions.Contains(GetOperatorNameFromString(c.Operation)));
 
-                    if (isblankChild != null)
+                    if (predicateChild != null)
                     {
-                        // Fold ISBLANK into Not
-                        foldedNodeIds.Add(isblankChild.NodeId);
+                        var childOpName = GetOperatorNameFromString(predicateChild.Operation);
 
-                        // Get ISBLANK's predicate and wrap with NOT
-                        if (filterPredicateExpressions.TryGetValue(isblankChild.NodeId, out var isblankPredicate))
+                        // Fold predicate into Not
+                        foldedNodeIds.Add(predicateChild.NodeId);
+
+                        // Get predicate's expression and wrap with NOT
+                        if (filterPredicateExpressions.TryGetValue(predicateChild.NodeId, out var childPredicate))
                         {
-                            filterPredicateExpressions.Remove(isblankChild.NodeId);
-                            filterPredicateExpressions[node.NodeId] = $"NOT({isblankPredicate})";
+                            filterPredicateExpressions.Remove(predicateChild.NodeId);
+                            // Wrap each predicate in NOT: "ISBLANK(a), ISBLANK(b)" -> "NOT(ISBLANK(a)), NOT(ISBLANK(b))"
+                            var parts = childPredicate.Split(new[] { ", " }, StringSplitOptions.None);
+                            filterPredicateExpressions[node.NodeId] = string.Join(", ", parts.Select(p => $"NOT({p})"));
                         }
                         else
                         {
-                            // Build predicate from ISBLANK's IterCols
-                            var iterColsMatch = Regex.Match(isblankChild.Operation ?? "", @"IterCols\([^)]*\)\(([^)]+)\)");
-                            if (iterColsMatch.Success)
+                            // Build predicate from child's columns
+                            var columns = ExtractColumnsFromOperation(predicateChild.Operation);
+                            if (columns.Count > 0)
                             {
-                                var columns = iterColsMatch.Groups[1].Value;
-                                filterPredicateExpressions[node.NodeId] = $"NOT(ISBLANK({columns}))";
+                                var predicate = string.Join(", ", columns.Select(c => $"NOT({childOpName}({c}))"));
+                                filterPredicateExpressions[node.NodeId] = predicate;
                             }
                         }
-                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Not node {NodeId} folded ISBLANK, predicate: {Pred}",
-                            node.NodeId, filterPredicateExpressions.GetValueOrDefault(node.NodeId));
+                        if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Not node {NodeId} folded {ChildOp}, predicate: {Pred}",
+                            node.NodeId, childOpName, filterPredicateExpressions.GetValueOrDefault(node.NodeId));
+                    }
+                    else
+                    {
+                        // Standalone Not without unary predicate child - extract columns for display
+                        var columns = ExtractColumnsFromOperation(node.Operation);
+                        if (columns.Count > 0)
+                        {
+                            // Display as "Not: col1, col2"
+                            filterPredicateExpressions[node.NodeId] = string.Join(", ", columns);
+                            if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Standalone Not node {NodeId} columns: {Cols}",
+                                node.NodeId, filterPredicateExpressions[node.NodeId]);
+                        }
                     }
                 }
             }
 
-            // Handle Filter nodes that have Not children (for Filter → Not → ISBLANK chains)
+            // Handle Filter nodes that have Not children (for Filter → Not → unary predicate chains)
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -2604,7 +2703,8 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Fourth pass: Fold spool children into Spool_Iterator and SpoolLookup parents
+            // Pass 5: Fold spool children into Spool_Iterator, SpoolLookup, and hash lookup parents
+            // Uses recursive folding to handle deep spool chains (e.g., Spool_UniqueHashLookup → AggregationSpool → Spool_Iterator → AggregationSpool)
             var spoolTypeInfos = new Dictionary<int, string>();
             // Track all folded operations for display in detail pane
             var foldedOperationsMap = new Dictionary<int, List<string>>();
@@ -2623,6 +2723,59 @@ namespace DaxStudio.UI.ViewModels
 
             var iterColsPattern = new Regex(@"IterCols\(\d+\)\(('[^']+'\[[^\]]+\])\)", RegexOptions.Compiled);
             var lookupColsPattern = new Regex(@"LookupCols\(\d+\)\(('[^']+'\[[^\]]+\])\)", RegexOptions.Compiled);
+
+            // Helper to check if a node is a foldable spool type (but not spool parent types)
+            // Note: Cache is NOT included here - it's handled in Pass 8 and should remain visible
+            bool IsFoldableSpoolChild(string opName)
+            {
+                if (string.IsNullOrEmpty(opName)) return false;
+                // AggregationSpool<*>, ProjectionSpool, Extend_Lookup (but not Cache)
+                var isSpool = (opName.Contains("Spool<") || opName.EndsWith("Spool", StringComparison.OrdinalIgnoreCase)) &&
+                              !opName.StartsWith("Spool_Iterator", StringComparison.Ordinal) &&
+                              !opName.StartsWith("Spool_MultiValuedHashLookup", StringComparison.Ordinal) &&
+                              !opName.StartsWith("Spool_UniqueHashLookup", StringComparison.Ordinal) &&
+                              opName != "SpoolLookup";
+                var isExtend = opName == "Extend_Lookup";
+                return isSpool || isExtend;
+            }
+
+            // Helper to recursively fold a child and its descendants into the ultimate parent
+            void FoldSpoolChainRecursively(EnrichedPlanNode ultimateParent, EnrichedPlanNode nodeToFold, string columnName)
+            {
+                if (foldedNodeIds.Contains(nodeToFold.NodeId))
+                    return;
+
+                // CRITICAL: Never fold across engine boundaries
+                if (nodeToFold.EngineType != EngineType.Unknown && ultimateParent.EngineType != EngineType.Unknown &&
+                    nodeToFold.EngineType != ultimateParent.EngineType)
+                    return;
+
+                var childOpName = GetOperatorNameFromString(nodeToFold.Operation);
+                if (!IsFoldableSpoolChild(childOpName))
+                    return;
+
+                // Fold this node
+                foldedNodeIds.Add(nodeToFold.NodeId);
+                AddFoldedOp(ultimateParent.NodeId, nodeToFold.Operation);
+                if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding descendant {ChildId} ({ChildOp}) into {ParentId}",
+                    nodeToFold.NodeId, childOpName, ultimateParent.NodeId);
+
+                // Update spool type info
+                var simplifiedType = childOpName == "Extend_Lookup" ? "Extend" :
+                                     childOpName == "Cache" ? "Cache" :
+                                     GetSimplifiedSpoolType(childOpName);
+                var spoolInfo = !string.IsNullOrEmpty(columnName) ? $"{simplifiedType} {columnName}" : simplifiedType;
+                if (childOpName != "Extend_Lookup" && childOpName != "Cache")
+                    spoolTypeInfos[ultimateParent.NodeId] = spoolInfo;
+
+                // Recursively fold this node's children
+                var grandchildren = plan.AllNodes.Where(n => n.Parent?.NodeId == nodeToFold.NodeId).ToList();
+                foreach (var grandchild in grandchildren)
+                {
+                    FoldSpoolChainRecursively(ultimateParent, grandchild, columnName);
+                }
+            }
+
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -2652,52 +2805,17 @@ namespace DaxStudio.UI.ViewModels
                             columnName = lookupColsMatch.Groups[1].Value;
                     }
 
-                    // Find children to fold (AggregationSpool, ProjectionSpool, Extend_Lookup, etc.)
+                    // Find direct children and recursively fold the chain
                     var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId).ToList();
                     foreach (var child in children)
                     {
-                        if (foldedNodeIds.Contains(child.NodeId))
-                            continue;
-
-                        // CRITICAL: Never fold across engine boundaries (SE↔FE transitions are visually important)
-                        if (child.EngineType != EngineType.Unknown && node.EngineType != EngineType.Unknown &&
-                            child.EngineType != node.EngineType)
-                            continue;
-
-                        var childOp = child.Operation ?? "";
-                        var childOpName = GetOperatorNameFromString(childOp);
-
-                        // Check if child is a spool type that should fold
-                        var isSpoolType = (childOpName.Contains("Spool<") || childOpName.EndsWith("Spool", StringComparison.OrdinalIgnoreCase)) &&
-                                          !childOpName.StartsWith("Spool_Iterator", StringComparison.Ordinal) &&
-                                          childOpName != "SpoolLookup";
-
-                        // Also fold Extend_Lookup into spool parents
-                        var isExtendLookup = childOpName == "Extend_Lookup";
-
-                        if (isSpoolType || isExtendLookup)
-                        {
-                            // Map spool type to simplified description
-                            var simplifiedType = isSpoolType ? GetSimplifiedSpoolType(childOpName) : "Extend";
-
-                            // Combine with column name if available
-                            var spoolInfo = !string.IsNullOrEmpty(columnName)
-                                ? $"{simplifiedType} {columnName}"
-                                : simplifiedType;
-
-                            if (isSpoolType)
-                                spoolTypeInfos[node.NodeId] = spoolInfo;
-                            foldedNodeIds.Add(child.NodeId);
-                            AddFoldedOp(node.NodeId, child.Operation);
-                            if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding child {ChildId} ({ChildOp}) into {ParentOp} {ParentId}",
-                                child.NodeId, childOpName, opName, node.NodeId);
-                        }
+                        FoldSpoolChainRecursively(node, child, columnName);
                     }
                 }
             }
 
-            // Fifth pass: Fold chained arithmetic operators (Add→Add→Add becomes "Add (3x)")
-            // Iterate until no more folding possible (for deep chains)
+            // Pass 6: Fold chained arithmetic operators (Add→Add→Add becomes "Add (3x)")
+            // Iterates until no more folding possible (for deep chains)
             var chainedOperatorCounts = new Dictionary<int, int>();
             var arithmeticOperators = new HashSet<string> { "Add", "Subtract", "Multiply", "Divide", "Min", "Max", "Coalesce" };
 
@@ -2761,7 +2879,7 @@ namespace DaxStudio.UI.ViewModels
                 }
             } while (arithmeticProgress);
 
-            // Fifth-B pass: Fold SingletonTable into parent (always folds)
+            // Pass 7: Fold SingletonTable into parent (always folds)
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -2777,7 +2895,7 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Sixth pass: Extract column info for Scan_Vertipaq, DirectQueryResult, and other operators
+            // Pass 8: Extract column info for Scan_Vertipaq, DirectQueryResult, DependOnCols
             var scanColumnInfos = new Dictionary<int, string>();
             var directQueryFieldsInfos = new Dictionary<int, string>();
             var dependOnColsInfos = new Dictionary<int, string>();
@@ -2871,8 +2989,8 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Sixth pass: Fold identical parent-child nodes
-            // When a parent has a single child with an identical operation string, fold the child
+            // Pass 9: Fold identical parent-child nodes
+            // When parent has single child with identical operation string, fold child
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -2897,7 +3015,7 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Seventh pass: Infer Cache column from ancestor Spool_Iterator IterCols
+            // Pass 10: Infer Cache column from ancestor Spool_Iterator IterCols
             var cacheColumnInfos = new Dictionary<int, string>();
             var ancestorIterColsPattern = new Regex(@"IterCols\(\d+(?:,\s*\d+)*\)\(('[^']+'\[[^\]]+\])", RegexOptions.Compiled);
             foreach (var node in plan.AllNodes)
@@ -2932,9 +3050,8 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Eighth pass: Group nested Spool_Iterator chains (same or different #Records)
-            // When a Spool_Iterator has exactly one non-folded child that is also a Spool_Iterator,
-            // fold the child into the parent. Tracks row ranges for heterogeneous chains.
+            // Pass 11: Group nested Spool_Iterator chains
+            // Folds Spool_Iterator chains, tracking row ranges for heterogeneous records counts
             var nestedSpoolDepths = new Dictionary<int, int>();
             var recordsPattern = new Regex(@"#Records=(\d+)", RegexOptions.Compiled);
             var rowRanges = new Dictionary<int, (long min, long max)>(); // Track row ranges for folded chains
@@ -3047,9 +3164,7 @@ namespace DaxStudio.UI.ViewModels
                 }
             } while (madeProgress); // Keep folding until no more progress
 
-            // Ninth pass: Fold Variant->* type coercion nodes down into their children
-            // These are purely type conversion wrappers that add noise - fold them away
-            // and let their child take their place in the tree
+            // Pass 12: Fold Variant->* type coercion wrappers into their children
             var typeCoercionInfos = new Dictionary<int, string>();
             foreach (var node in plan.AllNodes)
             {
@@ -3080,9 +3195,7 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
-            // Tenth pass: SpoolLookup → Spool_Iterator folding with row range
-            // When SpoolLookup (1 row) has a Spool_Iterator child (11 rows), fold and show "1-11 rows"
-            // Note: rowRanges is already declared before 8th pass
+            // Pass 13: SpoolLookup → Spool_Iterator folding with row range
             foreach (var node in plan.AllNodes)
             {
                 if (foldedNodeIds.Contains(node.NodeId))
@@ -3145,8 +3258,7 @@ namespace DaxStudio.UI.ViewModels
                     child.NodeId, node.NodeId, minRecords, maxRecords);
             }
 
-            // Eleventh pass: Fold Proxy operators into their single child
-            // When a Proxy has exactly one non-folded child, fold the Proxy and transfer its info to the child
+            // Pass 14: Fold Proxy operators into their single child
             var collapsedProxyInfos = new Dictionary<int, List<string>>();
             do
             {
@@ -3199,9 +3311,7 @@ namespace DaxStudio.UI.ViewModels
                 }
             } while (madeProgress);
 
-            // TableToScalar folding pass: Fold TableToScalar and its spool children, transferring records to the first non-spool descendant
-            // Example: DatesBetween → TableToScalar → AggregationSpool → StartOfYear → LastDate
-            // Becomes: DatesBetween → StartOfYear → LastDate (with StartOfYear inheriting records)
+            // Pass 15: Fold TableToScalar and spool children, transferring records to first non-spool descendant
             var recordsInheritanceMap = new Dictionary<int, long>();  // Maps node ID to inherited records
             foreach (var node in plan.AllNodes)
             {

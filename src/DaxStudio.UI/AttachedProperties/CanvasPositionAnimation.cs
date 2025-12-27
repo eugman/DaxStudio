@@ -17,6 +17,12 @@ namespace DaxStudio.UI.AttachedProperties
         private const int AnimationDurationMs = 200;
 
         /// <summary>
+        /// Global flag to temporarily disable animations during bulk operations.
+        /// Set to true during Expand All/Collapse All/Show Issues to prevent performance issues.
+        /// </summary>
+        public static bool SuspendAnimations { get; set; } = false;
+
+        /// <summary>
         /// Gets the IsEnabled attached property value.
         /// </summary>
         public static bool GetIsEnabled(DependencyObject obj)
@@ -115,8 +121,8 @@ namespace DaxStudio.UI.AttachedProperties
                 double newValue = (double)e.NewValue;
                 double oldValue = Canvas.GetLeft(element);
 
-                // Skip animation if this is the first set or values are nearly equal
-                if (double.IsNaN(oldValue) || Math.Abs(oldValue - newValue) < 0.5)
+                // Skip animation if: first set, values nearly equal, or animations suspended for bulk operations
+                if (double.IsNaN(oldValue) || Math.Abs(oldValue - newValue) < 0.5 || SuspendAnimations)
                 {
                     Canvas.SetLeft(element, newValue);
                     return;
@@ -138,8 +144,8 @@ namespace DaxStudio.UI.AttachedProperties
                 double newValue = (double)e.NewValue;
                 double oldValue = Canvas.GetTop(element);
 
-                // Skip animation if this is the first set or values are nearly equal
-                if (double.IsNaN(oldValue) || Math.Abs(oldValue - newValue) < 0.5)
+                // Skip animation if: first set, values nearly equal, or animations suspended for bulk operations
+                if (double.IsNaN(oldValue) || Math.Abs(oldValue - newValue) < 0.5 || SuspendAnimations)
                 {
                     Canvas.SetTop(element, newValue);
                     return;

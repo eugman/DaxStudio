@@ -73,8 +73,9 @@ namespace DaxStudio.UI.Services
         }
 
         /// <summary>
-        /// Removes duplicate ExcessiveMaterialization issues where an ancestor has the same row count.
-        /// Only the leaf-most node per row count in a path is kept.
+        /// Removes duplicate ExcessiveMaterialization issues by:
+        /// 1. Removing ancestor issues when a descendant has the same row count
+        /// 2. Aggregating similar issues with same row count into a single issue with count
         /// </summary>
         private List<PerformanceIssue> DedupeExcessiveMaterializationIssues(List<PerformanceIssue> issues, EnrichedQueryPlan plan)
         {
@@ -89,7 +90,7 @@ namespace DaxStudio.UI.Services
             // Build node lookup for quick access
             var nodeById = plan.AllNodes.ToDictionary(n => n.NodeId);
 
-            // For each materialization issue, check if any descendant has the same row count
+            // Phase 1: Remove ancestors where a descendant has the same row count
             var issuesToRemove = new HashSet<PerformanceIssue>();
 
             foreach (var issue in materializationIssues)
@@ -101,7 +102,7 @@ namespace DaxStudio.UI.Services
 
                 // Find all other issues with same row count
                 var sameRowCountIssues = materializationIssues
-                    .Where(i => i != issue && i.MetricValue == rowCount)
+                    .Where(i => i != issue && i.MetricValue == rowCount && !issuesToRemove.Contains(i))
                     .ToList();
 
                 if (sameRowCountIssues.Count == 0)
@@ -128,12 +129,78 @@ namespace DaxStudio.UI.Services
                 }
             }
 
-            if (issuesToRemove.Count > 0)
+            // Remove ancestor issues
+            var filteredIssues = issues.Where(i => !issuesToRemove.Contains(i)).ToList();
+
+            // Phase 2: Aggregate remaining materialization issues with same row count
+            var remainingMaterializationIssues = filteredIssues
+                .Where(i => i.IssueType == IssueType.ExcessiveMaterialization && i.MetricValue.HasValue)
+                .ToList();
+
+            if (remainingMaterializationIssues.Count <= 1)
+                return filteredIssues;
+
+            // Group by row count
+            var groupedByRowCount = remainingMaterializationIssues
+                .GroupBy(i => i.MetricValue.Value)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            if (groupedByRowCount.Count == 0)
+                return filteredIssues;
+
+            // For each group with multiple issues, keep only the first and update description
+            var issuesToAggregateOut = new HashSet<PerformanceIssue>();
+            var issuesToUpdate = new Dictionary<PerformanceIssue, string>();
+
+            foreach (var group in groupedByRowCount)
             {
-                return issues.Where(i => !issuesToRemove.Contains(i)).ToList();
+                var issueList = group.ToList();
+                var representativeIssue = issueList[0];
+                var count = issueList.Count;
+                var rowCount = group.Key;
+
+                // Update description to show aggregate count
+                issuesToUpdate[representativeIssue] = $"{count} Spool operations each materialized {rowCount:N0} rows";
+
+                // Mark the rest for removal
+                foreach (var otherIssue in issueList.Skip(1))
+                {
+                    issuesToAggregateOut.Add(otherIssue);
+                }
+
+                Log.Debug("DedupeExcessiveMaterialization: Aggregated {Count} issues with {RowCount} rows into single issue",
+                    count, rowCount);
             }
 
-            return issues;
+            // Build final result
+            var result = new List<PerformanceIssue>();
+            foreach (var issue in filteredIssues)
+            {
+                if (issuesToAggregateOut.Contains(issue))
+                    continue;
+
+                if (issuesToUpdate.TryGetValue(issue, out var newDescription))
+                {
+                    // Create updated copy
+                    result.Add(new PerformanceIssue
+                    {
+                        IssueType = issue.IssueType,
+                        Severity = issue.Severity,
+                        AffectedNodeId = issue.AffectedNodeId,
+                        Description = newDescription,
+                        Remediation = issue.Remediation,
+                        MetricValue = issue.MetricValue,
+                        Threshold = issue.Threshold
+                    });
+                }
+                else
+                {
+                    result.Add(issue);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
