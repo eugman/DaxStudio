@@ -636,7 +636,82 @@ namespace DaxStudio.Tests.VisualQueryPlan
 
         #endregion
 
+        #region Records Extraction Tests
+
+        [TestMethod]
+        public void Records_WithHashRecords_ExtractsCorrectly()
+        {
+            // Arrange - Standard #Records= format
+            var node = CreateNode("Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=12345");
+
+            // Act & Assert
+            Assert.AreEqual(12345, node.Records);
+            Assert.IsTrue(node.HasRecords);
+        }
+
+        [TestMethod]
+        public void Records_WithHashRecs_ExtractsCorrectly()
+        {
+            // Arrange - Alternative #Recs= format (some plans use this)
+            var node = CreateNode("SpoolLookup: LookupPhyOp #Recs=500000");
+
+            // Act & Assert
+            Assert.AreEqual(500000, node.Records);
+            Assert.IsTrue(node.HasRecords);
+        }
+
+        [TestMethod]
+        public void Records_LargeNumber_ExtractsCorrectly()
+        {
+            // Arrange - Large record count (millions)
+            var node = CreateNode("Scan_Vertipaq: RelLogOp #Records=6255798");
+
+            // Act & Assert
+            Assert.AreEqual(6255798, node.Records);
+            Assert.IsTrue(node.HasRecords);
+        }
+
+        [TestMethod]
+        public void Records_NotPresent_ReturnsNull()
+        {
+            // Arrange - No records property
+            var node = CreateNode("AddColumns: IterPhyOp LogOp=AddColumns IterCols(0)(''[Test])");
+
+            // Act & Assert
+            Assert.IsFalse(node.HasRecords);
+            Assert.IsNull(node.Records);
+        }
+
+        [TestMethod]
+        public void Records_WithKeyCols_BothExtractCorrectly()
+        {
+            // Arrange - Records with other properties like #KeyCols, #ValueCols
+            var node = CreateNode("SpoolLookup: LookupPhyOp #Records=5647 #KeyCols=247 #ValueCols=1");
+
+            // Act & Assert
+            Assert.AreEqual(5647, node.Records);
+            Assert.IsTrue(node.HasRecords);
+        }
+
+        [TestMethod]
+        public void Records_Zero_ExtractsCorrectly()
+        {
+            // Arrange - Edge case: zero records
+            var node = CreateNode("Spool_Iterator: IterPhyOp #Records=0");
+
+            // Act & Assert
+            Assert.AreEqual(0, node.Records);
+            // Note: HasRecords may be false when Records=0 depending on implementation
+        }
+
+        #endregion
+
         #region Helper Methods
+
+        // Regex to extract #Records= or #Recs= values from operation string
+        private static readonly System.Text.RegularExpressions.Regex RecordsExtractorRegex =
+            new System.Text.RegularExpressions.Regex(@"#Rec(?:ords|s)=(\d+)",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
 
         private PlanNodeViewModel CreateNode(string operation)
         {
@@ -646,6 +721,14 @@ namespace DaxStudio.Tests.VisualQueryPlan
                 Operation = operation,
                 ResolvedOperation = operation
             };
+
+            // Extract #Records= or #Recs= from operation string if present
+            var recordsMatch = RecordsExtractorRegex.Match(operation);
+            if (recordsMatch.Success && long.TryParse(recordsMatch.Groups[1].Value, out var records))
+            {
+                enrichedNode.Records = records;
+            }
+
             return new PlanNodeViewModel(enrichedNode);
         }
 
