@@ -145,6 +145,11 @@ namespace DaxStudio.UI.ViewModels
             }
         }
 
+        /// <summary>
+        /// Whether this is a DirectQuery event (query sent to external data source).
+        /// </summary>
+        public bool IsDirectQuery { get; set; }
+
         public DateTime StartTime { get; set; }
         public DateTime EndTime { get; set; }
 

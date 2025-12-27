@@ -1,0 +1,4 @@
+{
+  "description": "Physical query plan with CallbackDataID operation for testing issue detection",
+  "rawPlan": "AddColumns: RelLogOp DependOnCols()(...) 0-3\n\tScan_Vertipaq: RelLogOp DependOnCols()() #Records=5000\n\tCallbackDataID: ScaLogOp DependOnCols(0, 1) Integer\n\t\tColValue: LookupPhyOp LookupCols(40)"
+}
