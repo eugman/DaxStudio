@@ -45,6 +45,12 @@ namespace DaxStudio.UI.Model
         /// Large table scan followed by filter, suggesting
         /// filter could not be pushed down to scan.
         /// </summary>
-        InefficientFilter
+        InefficientFilter,
+
+        /// <summary>
+        /// Large data size in SE operation (100MB+ warning, 1GB+ error).
+        /// Indicates large data volumes flowing through the query.
+        /// </summary>
+        ExcessiveDataSize
     }
 }

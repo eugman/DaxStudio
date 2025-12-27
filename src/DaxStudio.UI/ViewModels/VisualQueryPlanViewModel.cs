@@ -1575,6 +1575,7 @@ namespace DaxStudio.UI.ViewModels
         /// <summary>
         /// Refreshes the layout after a subtree collapse/expand toggle.
         /// Called by PlanNodeViewModel.OnSubtreeToggled callback.
+        /// Uses diff-based collection update to preserve visual elements for animation.
         /// </summary>
         private void RefreshLayoutAfterToggle()
         {
@@ -1582,24 +1583,40 @@ namespace DaxStudio.UI.ViewModels
             if (RootNode == null)
                 return;
 
-            // Rebuild the AllNodes collection respecting collapsed state using batch operations
+            // Get the new list of visible nodes
             var collectSw = System.Diagnostics.Stopwatch.StartNew();
-            var nodeList = CollectAllNodesAsList(RootNode);
-            AllNodes.IsNotifying = false;
-            AllNodes.Clear();
-            AllNodes.AddRange(nodeList);
-            AllNodes.IsNotifying = true;
+            var newNodeSet = new HashSet<PlanNodeViewModel>(CollectAllNodesAsList(RootNode));
+            var currentNodeSet = new HashSet<PlanNodeViewModel>(AllNodes);
             Log.Debug(">>> PERF Toggle: CollectAllNodes took {ElapsedMs}ms", collectSw.ElapsedMilliseconds);
 
-            // Recalculate layout for the new visible tree
+            // First, recalculate layout so positions are ready before collection update
+            // This ensures nodes that stay visible will animate to their new positions
             var layoutSw = System.Diagnostics.Stopwatch.StartNew();
             CalculateLayout();
             Log.Debug(">>> PERF Toggle: CalculateLayout took {ElapsedMs}ms", layoutSw.ElapsedMilliseconds);
 
+            // Diff-based update: only add/remove what changed
+            // This preserves visual elements for nodes that remain, enabling smooth animation
+            AllNodes.IsNotifying = false;
+
+            // Remove nodes that are no longer visible
+            var nodesToRemove = currentNodeSet.Except(newNodeSet).ToList();
+            foreach (var node in nodesToRemove)
+            {
+                AllNodes.Remove(node);
+            }
+
+            // Add nodes that are newly visible
+            var nodesToAdd = newNodeSet.Except(currentNodeSet).ToList();
+            AllNodes.AddRange(nodesToAdd);
+
+            AllNodes.IsNotifying = true;
+
             // Notify UI that AllNodes has changed (single refresh notification)
             AllNodes.Refresh();
             NotifyOfPropertyChange(nameof(AllNodes));
-            Log.Debug(">>> PERF Toggle: Total RefreshLayoutAfterToggle took {ElapsedMs}ms", sw.ElapsedMilliseconds);
+            Log.Debug(">>> PERF Toggle: Total RefreshLayoutAfterToggle took {ElapsedMs}ms (removed {Removed}, added {Added})",
+                sw.ElapsedMilliseconds, nodesToRemove.Count, nodesToAdd.Count);
         }
 
         // Cache for subtree width calculations during layout - cleared at start of each layout pass

@@ -952,6 +952,45 @@ namespace DaxStudio.UI.ViewModels
         /// </summary>
         public bool HasDataSize => _node.EstimatedKBytes.HasValue;
 
+        /// <summary>
+        /// Severity level for data size in logical plans (SE operations).
+        /// 100MB+ = Warning (yellow), 1GB+ = Critical (red)
+        /// Only applies to SE operations in logical plans (Vertipaq scans).
+        /// </summary>
+        public string DataSizeSeverity
+        {
+            get
+            {
+                if (!_node.EstimatedKBytes.HasValue || _node.EstimatedKBytes.Value == 0)
+                    return "None";
+
+                var kb = _node.EstimatedKBytes.Value;
+                // 100 MB = 102,400 KB
+                // 1 GB = 1,048,576 KB
+                if (kb < 102_400)
+                    return "Fine";      // Green - acceptable
+                if (kb < 1_048_576)
+                    return "Warning";   // Yellow - 100MB+ is concerning
+                return "Critical";      // Red - 1GB+ is excessive
+            }
+        }
+
+        /// <summary>
+        /// Color for data size display based on severity thresholds.
+        /// </summary>
+        public Brush DataSizeColor
+        {
+            get
+            {
+                return DataSizeSeverity switch
+                {
+                    "Warning" => new SolidColorBrush(Color.FromRgb(200, 120, 0)),  // Muted orange
+                    "Critical" => new SolidColorBrush(Color.FromRgb(180, 40, 40)), // Muted red
+                    _ => new SolidColorBrush(Color.FromRgb(80, 80, 80))             // Dark gray (default)
+                };
+            }
+        }
+
         #endregion
 
         #region CallbackDataID Detection

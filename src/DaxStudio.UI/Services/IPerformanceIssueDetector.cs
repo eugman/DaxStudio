@@ -89,5 +89,22 @@ namespace DaxStudio.UI.Services
         /// Whether to detect low cache hit ratio issues.
         /// </summary>
         public bool DetectLowCacheHitRatio { get; set; } = true;
+
+        /// <summary>
+        /// Data size threshold for excessive data size warning (in KB).
+        /// Default is 100 MB (102,400 KB).
+        /// </summary>
+        public long ExcessiveDataSizeThreshold { get; set; } = 102_400;
+
+        /// <summary>
+        /// Data size threshold for excessive data size error (in KB).
+        /// Default is 1 GB (1,048,576 KB).
+        /// </summary>
+        public long ExcessiveDataSizeErrorThreshold { get; set; } = 1_048_576;
+
+        /// <summary>
+        /// Whether to detect excessive data size issues in SE operations.
+        /// </summary>
+        public bool DetectExcessiveDataSize { get; set; } = true;
     }
 }

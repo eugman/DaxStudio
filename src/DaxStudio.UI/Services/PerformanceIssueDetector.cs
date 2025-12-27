@@ -251,6 +251,12 @@ namespace DaxStudio.UI.Services
                 DetectXmSqlCallbacks(node, issues);
             }
 
+            // Check for excessive data size (SE operations in logical plans)
+            if (Settings.DetectExcessiveDataSize)
+            {
+                DetectExcessiveDataSize(node, issues);
+            }
+
             return issues;
         }
 
@@ -395,6 +401,52 @@ namespace DaxStudio.UI.Services
                     AffectedNodeId = node.NodeId,
                     Description = $"xmSQL contains {callbackType} callback",
                     Remediation = XmSqlParser.GetCallbackDescription(callbackType)
+                });
+            }
+        }
+
+        private void DetectExcessiveDataSize(EnrichedPlanNode node, List<PerformanceIssue> issues)
+        {
+            // Only check nodes with data size info (typically SE operations in logical plans)
+            if (!node.EstimatedKBytes.HasValue || node.EstimatedKBytes.Value == 0)
+                return;
+
+            var kb = node.EstimatedKBytes.Value;
+
+            if (kb >= Settings.ExcessiveDataSizeErrorThreshold)
+            {
+                var sizeDisplay = kb >= 1024 * 1024
+                    ? $"{kb / (1024.0 * 1024.0):F1} GB"
+                    : $"{kb / 1024.0:F1} MB";
+
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.ExcessiveDataSize,
+                    Severity = IssueSeverity.Error,
+                    AffectedNodeId = node.NodeId,
+                    Description = $"SE operation scanned {sizeDisplay} of data",
+                    Remediation = "Large data volumes indicate the query is reading significant data from the storage engine. " +
+                                  "Consider adding filters to reduce the amount of data scanned, or pre-aggregating data.",
+                    MetricValue = kb,
+                    Threshold = Settings.ExcessiveDataSizeErrorThreshold
+                });
+            }
+            else if (kb >= Settings.ExcessiveDataSizeThreshold)
+            {
+                var sizeDisplay = kb >= 1024
+                    ? $"{kb / 1024.0:F1} MB"
+                    : $"{kb:N0} KB";
+
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.ExcessiveDataSize,
+                    Severity = IssueSeverity.Warning,
+                    AffectedNodeId = node.NodeId,
+                    Description = $"SE operation scanned {sizeDisplay} of data",
+                    Remediation = "Consider adding filters to reduce the amount of data scanned. " +
+                                  "Review if all columns in the query are necessary.",
+                    MetricValue = kb,
+                    Threshold = Settings.ExcessiveDataSizeThreshold
                 });
             }
         }
