@@ -257,6 +257,12 @@ namespace DaxStudio.UI.Services
                 DetectExcessiveDataSize(node, issues);
             }
 
+            // Check for unusual parallelism (CPU >> Duration)
+            if (Settings.DetectUnusualParallelism)
+            {
+                DetectUnusualParallelism(node, issues);
+            }
+
             return issues;
         }
 
@@ -447,6 +453,38 @@ namespace DaxStudio.UI.Services
                                   "Review if all columns in the query are necessary.",
                     MetricValue = kb,
                     Threshold = Settings.ExcessiveDataSizeThreshold
+                });
+            }
+        }
+
+        private void DetectUnusualParallelism(EnrichedPlanNode node, List<PerformanceIssue> issues)
+        {
+            // Need both CPU and Duration to check
+            if (!node.CpuTimeMs.HasValue || !node.DurationMs.HasValue)
+                return;
+
+            var cpuMs = node.CpuTimeMs.Value;
+            var durationMs = node.DurationMs.Value;
+
+            // Skip if duration is 0 (avoid divide by zero)
+            if (durationMs <= 0 || cpuMs <= 0)
+                return;
+
+            var ratio = (double)cpuMs / durationMs;
+
+            if (ratio > Settings.UnusualParallelismThreshold)
+            {
+                issues.Add(new PerformanceIssue
+                {
+                    IssueType = IssueType.UnusualParallelism,
+                    Severity = IssueSeverity.Info,
+                    AffectedNodeId = node.NodeId,
+                    Description = $"Unusual parallelism: CPU time ({cpuMs:N0}ms) is {ratio:F1}x Duration ({durationMs:N0}ms)",
+                    Remediation = "This indicates the operation used significantly more CPU time than wall-clock time. " +
+                                  "This is expected for highly parallel operations, but extreme ratios may indicate " +
+                                  "measurement issues or unexpected threading behavior.",
+                    MetricValue = cpuMs,
+                    Threshold = durationMs * Settings.UnusualParallelismThreshold
                 });
             }
         }

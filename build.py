@@ -45,8 +45,21 @@ def restore():
 def test(filter_pattern=None):
     """Run tests."""
     if not os.path.exists(TEST_DLL):
-        print("Test DLL not found, building first...")
+        print(f"Test DLL not found at: {TEST_DLL}")
+        print("Building test project...")
         build()
+
+        # Check if build created the DLL
+        if not os.path.exists(TEST_DLL):
+            print("\n" + "=" * 60)
+            print("ERROR: Build completed but test DLL was not created.")
+            print(f"Expected location: {TEST_DLL}")
+            print("\nPossible causes:")
+            print("  1. Build failed with errors (check output above)")
+            print("  2. Output path configuration differs from expected")
+            print("\nTry running 'python build.py rebuild' for a clean build.")
+            print("=" * 60)
+            sys.exit(1)
 
     args = [VSTEST, TEST_DLL]
     if filter_pattern:

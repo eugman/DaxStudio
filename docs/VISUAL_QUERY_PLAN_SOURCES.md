@@ -44,6 +44,14 @@ References consulted for DAX query plan parsing and visualization.
 - https://dax.guide/dt/variant/
   - Documents the Variant data type: used for expressions returning different types based on conditions (e.g., IF returning number or string). Cannot be used for table columns, only in measures/expressions.
 
+- https://dax.guide/op/table-constructor/
+  - Documents the table constructor `{ }` syntax. Returns TableCtor operator in query plans.
+
+## Microsoft Learn (Official DAX Reference)
+
+- https://learn.microsoft.com/en-us/dax/table-constructor
+  - Documents the table constructor syntax using curly braces `{ }`. Single column: `{ value1, value2 }` creates 'Value' column. Multi-column: `{ (a, b), (c, d) }` creates Value1, Value2 columns. Values are type-coerced when mixed.
+
 ---
 
-*Last updated: 2025-12-24*
+*Last updated: 2025-12-27*

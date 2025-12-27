@@ -106,5 +106,33 @@ namespace DaxStudio.UI.Services
         /// Whether to detect excessive data size issues in SE operations.
         /// </summary>
         public bool DetectExcessiveDataSize { get; set; } = true;
+
+        /// <summary>
+        /// Parallelism ratio threshold. If CPU/Duration exceeds this, flag as unusual.
+        /// Default is 32 (assuming max 32 cores is typical).
+        /// </summary>
+        public int UnusualParallelismThreshold { get; set; } = 32;
+
+        /// <summary>
+        /// Whether to detect unusual parallelism (CPU >> Duration).
+        /// </summary>
+        public bool DetectUnusualParallelism { get; set; } = true;
+
+        /// <summary>
+        /// Row count mismatch ratio threshold. If logical/physical differs by more than this
+        /// factor, flag as potential issue. Default is 10 (10x difference).
+        /// </summary>
+        public double RowCountMismatchThreshold { get; set; } = 10.0;
+
+        /// <summary>
+        /// Minimum row count to check for mismatch (avoid false positives on small counts).
+        /// Default is 1000 rows.
+        /// </summary>
+        public long MinRowsForMismatchCheck { get; set; } = 1000;
+
+        /// <summary>
+        /// Whether to detect logical/physical row count mismatches.
+        /// </summary>
+        public bool DetectRowCountMismatch { get; set; } = true;
     }
 }

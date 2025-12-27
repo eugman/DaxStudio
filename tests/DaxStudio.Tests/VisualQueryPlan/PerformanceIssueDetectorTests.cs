@@ -277,5 +277,69 @@ namespace DaxStudio.Tests.VisualQueryPlan
             Assert.AreEqual(1, materializationIssues.Count, "Siblings with same row count should be aggregated into one issue");
             Assert.IsTrue(materializationIssues[0].Description.Contains("2 Spool"), "Should indicate count in description");
         }
+
+        #region Unusual Parallelism Tests
+
+        [TestMethod]
+        public void DetectNodeIssues_UnusualParallelism_FlagsHighRatio()
+        {
+            // Arrange - CPU time is 50x Duration (way above 32 threshold)
+            var node = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "Scan_Vertipaq",
+                CpuTimeMs = 5000,   // 5000ms CPU
+                DurationMs = 100    // 100ms wall clock = 50x ratio
+            };
+
+            // Act
+            var issues = _detector.DetectNodeIssues(node);
+
+            // Assert
+            var parallelismIssues = issues.Where(i => i.IssueType == IssueType.UnusualParallelism).ToList();
+            Assert.AreEqual(1, parallelismIssues.Count);
+            Assert.AreEqual(IssueSeverity.Info, parallelismIssues[0].Severity);
+            Assert.IsTrue(parallelismIssues[0].Description.Contains("50"));
+        }
+
+        [TestMethod]
+        public void DetectNodeIssues_NormalParallelism_NoIssue()
+        {
+            // Arrange - CPU time is 4x Duration (below 32 threshold)
+            var node = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "Scan_Vertipaq",
+                CpuTimeMs = 400,    // 400ms CPU
+                DurationMs = 100    // 100ms wall clock = 4x ratio
+            };
+
+            // Act
+            var issues = _detector.DetectNodeIssues(node);
+
+            // Assert
+            var parallelismIssues = issues.Where(i => i.IssueType == IssueType.UnusualParallelism).ToList();
+            Assert.AreEqual(0, parallelismIssues.Count);
+        }
+
+        [TestMethod]
+        public void DetectNodeIssues_MissingTimingData_NoParallelismIssue()
+        {
+            // Arrange - No CPU or Duration data
+            var node = new EnrichedPlanNode
+            {
+                NodeId = 1,
+                Operation = "Scan_Vertipaq"
+            };
+
+            // Act
+            var issues = _detector.DetectNodeIssues(node);
+
+            // Assert
+            var parallelismIssues = issues.Where(i => i.IssueType == IssueType.UnusualParallelism).ToList();
+            Assert.AreEqual(0, parallelismIssues.Count);
+        }
+
+        #endregion
     }
 }

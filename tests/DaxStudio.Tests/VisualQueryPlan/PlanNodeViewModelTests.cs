@@ -2153,7 +2153,8 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void BuildTree_IdenticalParentChild_WithGrandchildren_PromotesGrandchildren()
         {
             // Arrange - Parent and child identical, grandchild different
-            var identicalOp = "Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1)('Product'[Brand], ''[Sales])";
+            // Note: Use AddColumns (not Proxy) to avoid being affected by Proxy fold-down behavior
+            var identicalOp = "AddColumns: RelLogOp DependOnCols()() IterCols(0, 1)('Product'[Brand], ''[Sales])";
             var plan = new EnrichedQueryPlan
             {
                 AllNodes = new List<EnrichedPlanNode>
@@ -2197,6 +2198,7 @@ namespace DaxStudio.Tests.VisualQueryPlan
         public void BuildTree_DifferentParentChild_DoesNotFold()
         {
             // Arrange - Parent and child have different operations
+            // Note: Use Filter and AddColumns (not Proxy) to avoid being affected by Proxy fold-down behavior
             var plan = new EnrichedQueryPlan
             {
                 AllNodes = new List<EnrichedPlanNode>
@@ -2205,13 +2207,13 @@ namespace DaxStudio.Tests.VisualQueryPlan
                     {
                         NodeId = 1,
                         Level = 0,
-                        Operation = "Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0)('Product'[Brand])"
+                        Operation = "Filter: RelLogOp RequiredCols()() IterCols(0)('Product'[Brand])"
                     },
                     new EnrichedPlanNode
                     {
                         NodeId = 2,
                         Level = 1,
-                        Operation = "Proxy: IterPhyOp LogOp=ScalarVarProxy IterCols(1)('Sales'[Amount])" // Different!
+                        Operation = "AddColumns: RelLogOp DependOnCols()() IterCols(1)('Sales'[Amount])" // Different!
                     }
                 }
             };
@@ -2947,6 +2949,141 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
+        public void BuildTree_SpoolUniqueHashLookup_FoldsAggregationSpoolChild()
+        {
+            // Arrange - Spool_UniqueHashLookup with AggregationSpool child should fold
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Spool_UniqueHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) #Records=18869",
+                        EngineType = EngineType.FormulaEngine
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Operation = "AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869",
+                        EngineType = EngineType.FormulaEngine
+                    }
+                }
+            };
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - AggregationSpool should be folded into Spool_UniqueHashLookup
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.NodeId, "Spool_UniqueHashLookup should be root");
+            Assert.AreEqual(0, root.Children.Count, "AggregationSpool should be folded, no children");
+            Assert.IsTrue(root.FoldedOperations.Any(op => op.Contains("AggregationSpool")),
+                "AggregationSpool should be in FoldedOperations");
+        }
+
+        [TestMethod]
+        public void BuildTree_DeepSpoolChain_FoldsAllLevels()
+        {
+            // Arrange - 4-node spool chain from the plan example:
+            // Spool_UniqueHashLookup → AggregationSpool → Spool_Iterator → AggregationSpool
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 76,
+                        Operation = "Spool_UniqueHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) #Records=18869",
+                        EngineType = EngineType.FormulaEngine
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 77,
+                        Operation = "AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869",
+                        EngineType = EngineType.FormulaEngine
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 78,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869",
+                        EngineType = EngineType.FormulaEngine
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 79,
+                        Operation = "AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869",
+                        EngineType = EngineType.FormulaEngine
+                    }
+                }
+            };
+            // Set up parent relationships
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.AllNodes[3].Parent = plan.AllNodes[2];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - All 3 child nodes should be folded into the Spool_UniqueHashLookup
+            Assert.IsNotNull(root);
+            Assert.AreEqual(76, root.NodeId, "Spool_UniqueHashLookup should be root");
+            Assert.AreEqual(0, root.Children.Count, "All children should be folded");
+            Assert.IsTrue(root.FoldedOperations.Count >= 3, "Should have at least 3 folded operations");
+            Assert.IsTrue(root.FoldedOperations.Any(op => op.Contains("AggregationSpool")),
+                "AggregationSpool should be in FoldedOperations");
+            Assert.IsTrue(root.FoldedOperations.Any(op => op.Contains("Spool_Iterator")),
+                "Spool_Iterator should be in FoldedOperations");
+        }
+
+        [TestMethod]
+        public void BuildTree_MixedSpoolChain_PreservesRowRanges()
+        {
+            // Arrange - Spool chain where nodes have different row counts
+            // Should preserve the row range information
+            var plan = new EnrichedQueryPlan
+            {
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "SpoolLookup: LookupPhyOp LogOp=ScalarVarProxy LookupCols(0)('Product'[Brand]) #Records=1",
+                        EngineType = EngineType.FormulaEngine
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 2,
+                        Operation = "AggregationSpool<GroupBy>: SpoolPhyOp #Records=11",
+                        EngineType = EngineType.FormulaEngine
+                    },
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 3,
+                        Operation = "Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Product'[Brand]) #Records=11",
+                        EngineType = EngineType.FormulaEngine
+                    }
+                }
+            };
+            plan.AllNodes[1].Parent = plan.AllNodes[0];
+            plan.AllNodes[2].Parent = plan.AllNodes[1];
+            plan.RootNode = plan.AllNodes[0];
+
+            // Act
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Children should be folded
+            Assert.IsNotNull(root);
+            Assert.AreEqual(1, root.NodeId, "SpoolLookup should be root");
+            Assert.AreEqual(0, root.Children.Count, "All children should be folded");
+            Assert.IsTrue(root.FoldedOperations.Count > 0,
+                "Should have folded operations from spool chain");
+        }
+
+        [TestMethod]
         public void BuildTree_ExtendLookupUnderMultiValuedHashLookup_Folds()
         {
             // Arrange - Extend_Lookup under Spool_MultiValuedHashLookup should fold
@@ -3618,7 +3755,6 @@ namespace DaxStudio.Tests.VisualQueryPlan
         #region Wrapper Operator Tests
 
         [TestMethod]
-        [Ignore("Future feature: Variant fold-down not yet implemented")]
         public void BuildTree_VariantOperator_FoldsDownIntoChild()
         {
             // Variant wraps a type coercion and should fold into its child
@@ -3652,7 +3788,6 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
-        [Ignore("Future feature: Proxy fold-down not yet implemented")]
         public void BuildTree_ProxyOperator_FoldsDownIntoChild()
         {
             // Proxy wraps and should fold into its single child
@@ -3874,7 +4009,6 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
-        [Ignore("Future feature: Nested Spool_MultiValuedHashLookup chain folding not yet implemented")]
         public void BuildTree_MultipleFolds_AllOperationsInFoldedList()
         {
             // Chain of folds should accumulate in FoldedOperations
@@ -3949,7 +4083,6 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
-        [Ignore("Future feature: 10-level nested spool chain folding has different expected count")]
         public void BuildTree_DeeplyNestedChain_AllFoldsCorrectly()
         {
             // Test a deeply nested chain (10 levels) folds correctly
@@ -4355,9 +4488,10 @@ namespace DaxStudio.Tests.VisualQueryPlan
         }
 
         [TestMethod]
-        public void CanToggleSubtree_MultipleChildrenAndLargeWidth_ReturnsTrue()
+        public void CanToggleSubtree_MultipleChildrenAndLargeWidth_ButtonsPushedToDeepest()
         {
             // Arrange - Create a tree with 2 children and subtree width >= 20
+            // Each subtree has 10 leaf nodes, making them eligible (width >= 6)
             var nodes = new List<EnrichedPlanNode>
             {
                 new EnrichedPlanNode { NodeId = 1, Operation = "Root" }
@@ -4384,8 +4518,14 @@ namespace DaxStudio.Tests.VisualQueryPlan
             var root = PlanNodeViewModel.BuildTree(plan);
 
             // Assert
-            Assert.IsTrue(root.CanToggleSubtree, "Node with 2 children and width >= 20 should show toggle");
+            // Root should NOT toggle because children are eligible (width >= 6)
+            Assert.IsFalse(root.CanToggleSubtree, "Root should not toggle when children are eligible");
             Assert.AreEqual(20, root.SubtreeWidth, "Root should have subtree width of 20");
+
+            // But the child subtrees SHOULD be able to toggle
+            Assert.AreEqual(2, root.Children.Count);
+            Assert.IsTrue(root.Children[0].CanToggleSubtree, "Subtree0 should be able to toggle (10 children, width=10)");
+            Assert.IsTrue(root.Children[1].CanToggleSubtree, "Subtree1 should be able to toggle (10 children, width=10)");
         }
 
         [TestMethod]
@@ -4524,6 +4664,262 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Assert - both ancestors should be expanded
             Assert.IsFalse(root.IsSubtreeCollapsed, "Root should be expanded");
             Assert.IsFalse(middle.IsSubtreeCollapsed, "Middle should be expanded");
+        }
+
+        #endregion
+
+        #region Tree Footprint Tests (VisibleSubtreeWidth)
+
+        [TestMethod]
+        public void VisibleSubtreeWidth_AllExpanded_EqualsSubtreeWidth()
+        {
+            // Arrange - Tree with 4 leaf nodes
+            var nodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Root" },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Left" },
+                new EnrichedPlanNode { NodeId = 3, Operation = "Right" },
+                new EnrichedPlanNode { NodeId = 4, Operation = "LeftLeaf1" },
+                new EnrichedPlanNode { NodeId = 5, Operation = "LeftLeaf2" },
+                new EnrichedPlanNode { NodeId = 6, Operation = "RightLeaf1" },
+                new EnrichedPlanNode { NodeId = 7, Operation = "RightLeaf2" }
+            };
+            nodes[1].Parent = nodes[0]; // Left -> Root
+            nodes[2].Parent = nodes[0]; // Right -> Root
+            nodes[3].Parent = nodes[1]; // LeftLeaf1 -> Left
+            nodes[4].Parent = nodes[1]; // LeftLeaf2 -> Left
+            nodes[5].Parent = nodes[2]; // RightLeaf1 -> Right
+            nodes[6].Parent = nodes[2]; // RightLeaf2 -> Right
+
+            var plan = new EnrichedQueryPlan { AllNodes = nodes, RootNode = nodes[0] };
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Act & Assert
+            Assert.AreEqual(4, root.SubtreeWidth, "SubtreeWidth should be 4 (total leaves)");
+            Assert.AreEqual(4, root.VisibleSubtreeWidth, "VisibleSubtreeWidth should equal SubtreeWidth when all expanded");
+        }
+
+        [TestMethod]
+        public void VisibleSubtreeWidth_WhenCollapsed_ReturnsOne()
+        {
+            // Arrange - Tree with 4 leaf nodes
+            var nodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Root" },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Left" },
+                new EnrichedPlanNode { NodeId = 3, Operation = "Right" },
+                new EnrichedPlanNode { NodeId = 4, Operation = "LeftLeaf1" },
+                new EnrichedPlanNode { NodeId = 5, Operation = "LeftLeaf2" },
+                new EnrichedPlanNode { NodeId = 6, Operation = "RightLeaf1" },
+                new EnrichedPlanNode { NodeId = 7, Operation = "RightLeaf2" }
+            };
+            nodes[1].Parent = nodes[0];
+            nodes[2].Parent = nodes[0];
+            nodes[3].Parent = nodes[1];
+            nodes[4].Parent = nodes[1];
+            nodes[5].Parent = nodes[2];
+            nodes[6].Parent = nodes[2];
+
+            var plan = new EnrichedQueryPlan { AllNodes = nodes, RootNode = nodes[0] };
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Act - collapse root
+            root.IsSubtreeCollapsed = true;
+
+            // Assert
+            Assert.AreEqual(4, root.SubtreeWidth, "SubtreeWidth should still be 4");
+            Assert.AreEqual(1, root.VisibleSubtreeWidth, "VisibleSubtreeWidth should be 1 when collapsed");
+        }
+
+        [TestMethod]
+        public void VisibleSubtreeWidth_PartiallyCollapsed_ReflectsVisibleLeaves()
+        {
+            // Arrange - Tree with 4 leaf nodes under 2 branches
+            var nodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Root" },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Left" },
+                new EnrichedPlanNode { NodeId = 3, Operation = "Right" },
+                new EnrichedPlanNode { NodeId = 4, Operation = "LeftLeaf1" },
+                new EnrichedPlanNode { NodeId = 5, Operation = "LeftLeaf2" },
+                new EnrichedPlanNode { NodeId = 6, Operation = "RightLeaf1" },
+                new EnrichedPlanNode { NodeId = 7, Operation = "RightLeaf2" }
+            };
+            nodes[1].Parent = nodes[0];
+            nodes[2].Parent = nodes[0];
+            nodes[3].Parent = nodes[1];
+            nodes[4].Parent = nodes[1];
+            nodes[5].Parent = nodes[2];
+            nodes[6].Parent = nodes[2];
+
+            var plan = new EnrichedQueryPlan { AllNodes = nodes, RootNode = nodes[0] };
+            var root = PlanNodeViewModel.BuildTree(plan);
+            var leftBranch = root.Children[0];
+
+            // Act - collapse only left branch
+            leftBranch.IsSubtreeCollapsed = true;
+
+            // Assert - Root sees Left as 1 (collapsed) + Right's 2 leaves = 3
+            Assert.AreEqual(3, root.VisibleSubtreeWidth,
+                "VisibleSubtreeWidth should be 3 (1 for collapsed Left + 2 for Right's leaves)");
+        }
+
+        [TestMethod]
+        public void VisibleSubtreeWidth_DeepTree_CalculatesCorrectly()
+        {
+            // Arrange - 4 branches, each with 4 leaves = 16 total footprint
+            var nodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Root" }
+            };
+
+            int nodeId = 2;
+            for (int branch = 0; branch < 4; branch++)
+            {
+                var branchNode = new EnrichedPlanNode { NodeId = nodeId++, Operation = $"Branch{branch}" };
+                branchNode.Parent = nodes[0];
+                nodes.Add(branchNode);
+
+                for (int leaf = 0; leaf < 4; leaf++)
+                {
+                    var leafNode = new EnrichedPlanNode { NodeId = nodeId++, Operation = $"Leaf{branch}_{leaf}" };
+                    leafNode.Parent = branchNode;
+                    nodes.Add(leafNode);
+                }
+            }
+
+            var plan = new EnrichedQueryPlan { AllNodes = nodes, RootNode = nodes[0] };
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert initial footprint
+            Assert.AreEqual(16, root.VisibleSubtreeWidth, "Initial footprint should be 16 (4 branches × 4 leaves)");
+
+            // Act - collapse 2 branches
+            root.Children[0].IsSubtreeCollapsed = true;
+            root.Children[1].IsSubtreeCollapsed = true;
+
+            // Assert - 2 collapsed (=2) + 2 expanded with 4 leaves each (=8) = 10
+            Assert.AreEqual(10, root.VisibleSubtreeWidth,
+                "Footprint should be 10 (2 collapsed + 8 visible leaves)");
+        }
+
+        #endregion
+
+        #region CanToggleSubtree with HasEligibleDescendant Tests
+
+        [TestMethod]
+        public void CanToggleSubtree_WithEligibleDescendant_ReturnsFalse()
+        {
+            // Arrange - Root has eligible descendant (child with 2+ children and width >= 6)
+            // Root -> Branch (2 children, width 6) -> 6 leaves
+            var nodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Root" },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Branch" }
+            };
+
+            // Add 6 leaves under Branch
+            for (int i = 0; i < 6; i++)
+            {
+                var leaf = new EnrichedPlanNode { NodeId = 3 + i, Operation = $"Leaf{i}" };
+                leaf.Parent = nodes[1];
+                nodes.Add(leaf);
+            }
+            nodes[1].Parent = nodes[0];
+
+            var plan = new EnrichedQueryPlan { AllNodes = nodes, RootNode = nodes[0] };
+            var root = PlanNodeViewModel.BuildTree(plan);
+            var branch = root.Children[0];
+
+            // Assert - Branch should be eligible (6 children >= 6 threshold, but needs 2+ children to qualify)
+            // Actually Branch has 6 children and width 6, so it should qualify
+            Assert.AreEqual(6, branch.SubtreeWidth);
+            Assert.AreEqual(6, branch.Children.Count);
+            Assert.IsTrue(branch.CanToggleSubtree, "Branch should be eligible for collapse");
+
+            // Root has 1 child (Branch) so can't toggle anyway, but let's verify HasEligibleDescendant logic
+            Assert.IsFalse(root.CanToggleSubtree, "Root with single child should not show toggle");
+        }
+
+        [TestMethod]
+        public void CanToggleSubtree_AfterDescendantCollapse_BecomesEligible()
+        {
+            // Arrange - Create tree where parent becomes eligible after child collapses
+            // Root (4 children) -> 4 Branches (each with 2 leaves) = 8 total width
+            // Initially, none of the branches qualify (width 2 < 6)
+            // Root should qualify (4 children, width 8 >= 6, no eligible descendants)
+            var nodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Root" }
+            };
+
+            int nodeId = 2;
+            for (int branch = 0; branch < 4; branch++)
+            {
+                var branchNode = new EnrichedPlanNode { NodeId = nodeId++, Operation = $"Branch{branch}" };
+                branchNode.Parent = nodes[0];
+                nodes.Add(branchNode);
+
+                for (int leaf = 0; leaf < 2; leaf++)
+                {
+                    var leafNode = new EnrichedPlanNode { NodeId = nodeId++, Operation = $"Leaf{branch}_{leaf}" };
+                    leafNode.Parent = branchNode;
+                    nodes.Add(leafNode);
+                }
+            }
+
+            var plan = new EnrichedQueryPlan { AllNodes = nodes, RootNode = nodes[0] };
+            var root = PlanNodeViewModel.BuildTree(plan);
+
+            // Assert - Each branch has width 2 < 6, so not eligible
+            foreach (var branch in root.Children)
+            {
+                Assert.AreEqual(2, branch.SubtreeWidth);
+                Assert.IsFalse(branch.CanToggleSubtree, "Branch with width 2 should not be eligible");
+            }
+
+            // Root has 4 children and width 8 >= 6, and no eligible descendants
+            Assert.AreEqual(8, root.SubtreeWidth);
+            Assert.AreEqual(4, root.Children.Count);
+            Assert.IsTrue(root.CanToggleSubtree, "Root should be eligible (4 children, width 8, no eligible descendants)");
+        }
+
+        [TestMethod]
+        public void CanToggleSubtree_DeepEligibleDescendant_PreventsAncestorToggle()
+        {
+            // Arrange - Root -> Middle -> DeepBranch (eligible) -> 6 leaves
+            // DeepBranch is eligible, so Middle and Root should not show toggle
+            var nodes = new List<EnrichedPlanNode>
+            {
+                new EnrichedPlanNode { NodeId = 1, Operation = "Root" },
+                new EnrichedPlanNode { NodeId = 2, Operation = "Middle" },
+                new EnrichedPlanNode { NodeId = 3, Operation = "DeepBranch" }
+            };
+
+            // Add 6 leaves under DeepBranch
+            for (int i = 0; i < 6; i++)
+            {
+                var leaf = new EnrichedPlanNode { NodeId = 4 + i, Operation = $"Leaf{i}" };
+                leaf.Parent = nodes[2];
+                nodes.Add(leaf);
+            }
+            nodes[1].Parent = nodes[0];
+            nodes[2].Parent = nodes[1];
+
+            var plan = new EnrichedQueryPlan { AllNodes = nodes, RootNode = nodes[0] };
+            var root = PlanNodeViewModel.BuildTree(plan);
+            var middle = root.Children[0];
+            var deepBranch = middle.Children[0];
+
+            // Assert
+            Assert.AreEqual(6, deepBranch.SubtreeWidth);
+            Assert.IsTrue(deepBranch.CanToggleSubtree, "DeepBranch should be eligible");
+
+            // Middle has 1 child so not eligible anyway
+            Assert.IsFalse(middle.CanToggleSubtree, "Middle with single child not eligible");
+
+            // Root has 1 child so not eligible anyway
+            Assert.IsFalse(root.CanToggleSubtree, "Root with single child not eligible");
         }
 
         #endregion

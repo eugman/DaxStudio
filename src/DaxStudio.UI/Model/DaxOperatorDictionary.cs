@@ -31,21 +31,24 @@ namespace DaxStudio.UI.Model
                 DisplayName = "Add Columns",
                 Description = "Adds calculated columns to each row of an input table. Iterates over rows and evaluates expressions for each.",
                 Category = "Iterator",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/addcolumns/"
             },
             ["SingletonTable"] = new DaxOperatorInfo
             {
                 DisplayName = "Singleton Table",
                 Description = "Creates a single-row table, typically used as the starting point for scalar calculations.",
                 Category = "Iterator",
-                Engine = EngineType.FormulaEngine
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/row/"
             },
             ["CrossApply"] = new DaxOperatorInfo
             {
                 DisplayName = "Cross Apply",
-                Description = "Performs a cross join between two tables, evaluating the right side for each row of the left side. Can be expensive with large tables.",
+                Description = "Evaluates a table expression for each row of an outer input. Can be expensive with large tables.",
                 Category = "Iterator",
                 Engine = EngineType.FormulaEngine
+                // Note: CrossApply is a query engine operator, not the CROSSJOIN DAX function
             },
             ["Filter"] = new DaxOperatorInfo
             {
@@ -261,28 +264,32 @@ namespace DaxStudio.UI.Model
                 DisplayName = "VertiPaq StdDev (Sample)",
                 Description = "Performs sample standard deviation aggregation in the VertiPaq storage engine.",
                 Category = "Storage Engine",
-                Engine = EngineType.StorageEngine
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/stdev.s/"
             },
             ["Stdev.P_Vertipaq"] = new DaxOperatorInfo
             {
                 DisplayName = "VertiPaq StdDev (Population)",
                 Description = "Performs population standard deviation aggregation in the VertiPaq storage engine.",
                 Category = "Storage Engine",
-                Engine = EngineType.StorageEngine
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/stdev.p/"
             },
             ["Var.S_Vertipaq"] = new DaxOperatorInfo
             {
                 DisplayName = "VertiPaq Variance (Sample)",
                 Description = "Performs sample variance aggregation in the VertiPaq storage engine.",
                 Category = "Storage Engine",
-                Engine = EngineType.StorageEngine
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/var.s/"
             },
             ["Var.P_Vertipaq"] = new DaxOperatorInfo
             {
                 DisplayName = "VertiPaq Variance (Population)",
                 Description = "Performs population variance aggregation in the VertiPaq storage engine.",
                 Category = "Storage Engine",
-                Engine = EngineType.StorageEngine
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/var.p/"
             },
             ["Filter_Vertipaq"] = new DaxOperatorInfo
             {
@@ -742,6 +749,113 @@ namespace DaxStudio.UI.Model
                 Category = "Arithmetic",
                 Engine = EngineType.FormulaEngine,
                 DaxGuideUrl = "https://dax.guide/op/division/"
+            },
+
+            // Table Constructor
+            ["TableCtor"] = new DaxOperatorInfo
+            {
+                DisplayName = "Table Constructor",
+                Description = "Builds an inline table using curly brace syntax { }. Single column tables use 'Value' as column name; multi-column tables use Value1, Value2, etc.",
+                Category = "Table",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/op/table-constructor/"
+            },
+
+            // DirectQuery and Partitioning Operators
+            ["PartitionIntoGroups"] = new DaxOperatorInfo
+            {
+                DisplayName = "Partition Into Groups",
+                Description = "Partitions data into groups for parallel processing or batched operations. Shows #Groups and #Rows properties.",
+                Category = "Iterator",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<Order>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Order)",
+                Description = "Aggregation spool for ORDER BY operations. Stores sorted results for efficient access.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<Top>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Top)",
+                Description = "Aggregation spool for TOP N operations. Stores top N results for efficient access.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<Last>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Last)",
+                Description = "Aggregation spool storing the last value. Used with time intelligence functions.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["AggregationSpool<TableToScalar>"] = new DaxOperatorInfo
+            {
+                DisplayName = "Aggregation Spool (Table to Scalar)",
+                Description = "Aggregation spool that converts table results to scalar values.",
+                Category = "Spool",
+                Engine = EngineType.FormulaEngine
+            },
+            ["CalculateTable_Vertipaq"] = new DaxOperatorInfo
+            {
+                DisplayName = "VertiPaq Calculate Table",
+                Description = "Evaluates CALCULATETABLE in the VertiPaq storage engine with modified filter context.",
+                Category = "Storage Engine",
+                Engine = EngineType.StorageEngine,
+                DaxGuideUrl = "https://dax.guide/calculatetable/"
+            },
+            ["TreatAs"] = new DaxOperatorInfo
+            {
+                DisplayName = "Treat As",
+                Description = "Applies virtual relationships by treating column values as if they were in another table. Used for dynamic filtering without physical relationships.",
+                Category = "Filter Modifier",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/treatas/"
+            },
+
+            // Logical/Boolean Operators
+            ["Not"] = new DaxOperatorInfo
+            {
+                DisplayName = "Not",
+                Description = "Logical NOT operator. Inverts a boolean value.",
+                Category = "Logical",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/not/"
+            },
+            ["ISBLANK"] = new DaxOperatorInfo
+            {
+                DisplayName = "Is Blank",
+                Description = "Checks if a value is blank. Returns TRUE if blank, FALSE otherwise.",
+                Category = "Logical",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/isblank/"
+            },
+            ["First"] = new DaxOperatorInfo
+            {
+                DisplayName = "First",
+                Description = "Returns the first value in a column or expression. Used in time intelligence and aggregation contexts.",
+                Category = "Aggregation",
+                Engine = EngineType.FormulaEngine
+                // Note: Different from FIRST() visual calculation function
+            },
+
+            // Time Intelligence Operators
+            ["StartOfYear"] = new DaxOperatorInfo
+            {
+                DisplayName = "Start of Year",
+                Description = "Returns the start of the year for a given date. Used in YTD calculations.",
+                Category = "Time Intelligence",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/startofyear/"
+            },
+            ["LastDate"] = new DaxOperatorInfo
+            {
+                DisplayName = "Last Date",
+                Description = "Returns the last date in a date column within the current filter context.",
+                Category = "Time Intelligence",
+                Engine = EngineType.FormulaEngine,
+                DaxGuideUrl = "https://dax.guide/lastdate/"
             }
         };
 

@@ -617,8 +617,8 @@ namespace DaxStudio.Tests.VisualQueryPlan
             // Act
             var description = DaxOperatorDictionary.GetDescription("CrossApply");
 
-            // Assert
-            Assert.IsTrue(description.Contains("cross join"));
+            // Assert - CrossApply evaluates table expressions, not CROSSJOIN
+            Assert.IsTrue(description.Contains("table expression"));
         }
 
         [TestMethod]

@@ -633,21 +633,27 @@ namespace DaxStudio.UI.ViewModels
         public string RecordsSource => _node.RecordsSource ?? "Plan";
 
         /// <summary>
-        /// Whether the row count is approximate (inferred from Physical plan or Inherited).
+        /// Whether the row count is approximate (inferred from Physical plan).
         /// When true, displays should use a ~ prefix.
+        /// Only shows ~ when a logical plan node's count was inferred from physical plan.
         /// </summary>
         public bool IsApproximateRowCount
         {
             get
             {
+                // Only show ~ when logical plan node has count inferred from physical plan
+                // "Plan" = direct #Records from plan string → exact
+                // "ServerTiming" = from xmSQL trace events → exact
+                // "Physical" = logical node count inferred from physical plan → approximate
+                // "Inherited" = passed during tree building → still exact, no ~
                 var source = _node.RecordsSource ?? "Plan";
-                return source == "Physical" || source == "Inherited";
+                return source == "Physical";
             }
         }
 
         /// <summary>
         /// Formatted records display with source annotation.
-        /// Adds ~ prefix for approximate values (inferred from Physical or Inherited).
+        /// Adds ~ prefix for approximate values (inferred from Physical plan).
         /// </summary>
         public string RecordsWithSourceDisplay
         {
@@ -2183,8 +2189,78 @@ namespace DaxStudio.UI.ViewModels
         /// <summary>
         /// Whether this node can have its subtree toggled.
         /// Only show collapse button for nodes with 2+ direct children AND subtree width >= 6.
+        /// Additionally, don't show if any descendant also qualifies (push button to deepest eligible level).
         /// </summary>
-        public bool CanToggleSubtree => Children.Count > 1 && SubtreeWidth >= 6;
+        public bool CanToggleSubtree
+        {
+            get
+            {
+                // Basic eligibility: 2+ children and wide enough subtree
+                if (Children.Count <= 1 || SubtreeWidth < 6)
+                    return false;
+
+                // Don't show button if any descendant also qualifies for a collapse button
+                // This pushes the button to the deepest eligible level in the tree
+                if (HasEligibleDescendant())
+                    return false;
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Checks if any descendant node qualifies for a collapse button.
+        /// Used to push collapse buttons to the deepest eligible level.
+        /// </summary>
+        private bool HasEligibleDescendant()
+        {
+            foreach (var child in Children)
+            {
+                // Check if this child qualifies
+                if (child.Children.Count > 1 && child.SubtreeWidth >= 6)
+                    return true;
+
+                // Recursively check descendants
+                if (child.HasEligibleDescendant())
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Maximum horizontal span of the subtree - the most nodes at any single depth level.
+        /// This represents the visual width better than leaf count for wide, shallow trees.
+        /// Respects collapsed state - collapsed subtrees count as 1 node.
+        /// </summary>
+        public int MaxHorizontalSpan
+        {
+            get
+            {
+                var spanByDepth = new Dictionary<int, int>();
+                CalculateVisibleSpanByDepth(0, spanByDepth);
+                return spanByDepth.Count > 0 ? spanByDepth.Values.Max() : 1;
+            }
+        }
+
+        /// <summary>
+        /// Recursively calculates visible node count at each depth level.
+        /// Respects collapsed state - doesn't recurse into collapsed subtrees.
+        /// </summary>
+        private void CalculateVisibleSpanByDepth(int depth, Dictionary<int, int> spanByDepth)
+        {
+            if (!spanByDepth.ContainsKey(depth))
+                spanByDepth[depth] = 0;
+            spanByDepth[depth]++;
+
+            // Don't recurse into collapsed subtrees
+            if (IsSubtreeCollapsed)
+                return;
+
+            foreach (var child in Children)
+            {
+                child.CalculateVisibleSpanByDepth(depth + 1, spanByDepth);
+            }
+        }
 
         /// <summary>
         /// Callback invoked when the subtree is toggled (collapsed/expanded).
@@ -2586,6 +2662,21 @@ namespace DaxStudio.UI.ViewModels
                 }
             }
 
+            // Track all folded operations for display in detail pane (shared across passes)
+            var foldedOperationsMap = new Dictionary<int, List<string>>();
+
+            // Helper to add a folded operation to a parent node
+            void AddFoldedOp(int parentId, string operation)
+            {
+                if (string.IsNullOrEmpty(operation)) return;
+                if (!foldedOperationsMap.TryGetValue(parentId, out var ops))
+                {
+                    ops = new List<string>();
+                    foldedOperationsMap[parentId] = ops;
+                }
+                ops.Add(operation);
+            }
+
             // Pass 4: Unary predicate functions (ISBLANK, ISERROR, ISNA) and Not wrapper folding
             // Process bottom-up: first unary predicates, then Not nodes wrapping them
             // Handles both IterCols (physical plan) and DependOnCols (logical plan) patterns
@@ -2680,6 +2771,7 @@ namespace DaxStudio.UI.ViewModels
 
                         // Fold predicate into Not
                         foldedNodeIds.Add(predicateChild.NodeId);
+                        AddFoldedOp(node.NodeId, predicateChild.Operation);
 
                         // Get predicate's expression and wrap with NOT
                         if (filterPredicateExpressions.TryGetValue(predicateChild.NodeId, out var childPredicate))
@@ -2734,6 +2826,16 @@ namespace DaxStudio.UI.ViewModels
                     {
                         // Fold Not into Filter and take its predicate
                         foldedNodeIds.Add(notChild.NodeId);
+                        AddFoldedOp(node.NodeId, notChild.Operation);
+
+                        // Transfer any operations that Not already folded (e.g., ISBLANK)
+                        if (foldedOperationsMap.TryGetValue(notChild.NodeId, out var notFoldedOps))
+                        {
+                            foreach (var op in notFoldedOps)
+                                AddFoldedOp(node.NodeId, op);
+                            foldedOperationsMap.Remove(notChild.NodeId);
+                        }
+
                         filterPredicateExpressions.Remove(notChild.NodeId);
                         filterPredicateExpressions[node.NodeId] = notPredicate;
                         if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Filter node {NodeId} folded Not, predicate: {Pred}",
@@ -2745,29 +2847,26 @@ namespace DaxStudio.UI.ViewModels
             // Pass 5: Fold spool children into Spool_Iterator, SpoolLookup, and hash lookup parents
             // Uses recursive folding to handle deep spool chains (e.g., Spool_UniqueHashLookup → AggregationSpool → Spool_Iterator → AggregationSpool)
             var spoolTypeInfos = new Dictionary<int, string>();
-            // Track all folded operations for display in detail pane
-            var foldedOperationsMap = new Dictionary<int, List<string>>();
-
-            // Helper to add a folded operation to a parent node
-            void AddFoldedOp(int parentId, string operation)
-            {
-                if (string.IsNullOrEmpty(operation)) return;
-                if (!foldedOperationsMap.TryGetValue(parentId, out var ops))
-                {
-                    ops = new List<string>();
-                    foldedOperationsMap[parentId] = ops;
-                }
-                ops.Add(operation);
-            }
+            // Track nested spool depth for chains (moved from Pass 11 to support deep recursive folding)
+            var nestedSpoolDepths = new Dictionary<int, int>();
+            // Track row ranges for folded chains (min, max) - moved from Pass 11 to support deep recursive folding
+            var rowRanges = new Dictionary<int, (long min, long max)>();
 
             var iterColsPattern = new Regex(@"IterCols\(\d+\)\(('[^']+'\[[^\]]+\])\)", RegexOptions.Compiled);
             var lookupColsPattern = new Regex(@"LookupCols\(\d+\)\(('[^']+'\[[^\]]+\])\)", RegexOptions.Compiled);
 
             // Helper to check if a node is a foldable spool type (but not spool parent types)
             // Note: Cache is NOT included here - it's handled in Pass 8 and should remain visible
-            bool IsFoldableSpoolChild(string opName)
+            // When inChainContext is true, Spool_Iterator is allowed to be folded (for deep chains like
+            // Spool_UniqueHashLookup → AggregationSpool → Spool_Iterator → AggregationSpool)
+            bool IsFoldableSpoolChild(string opName, bool inChainContext = false)
             {
                 if (string.IsNullOrEmpty(opName)) return false;
+
+                // In chain context, Spool_Iterator variants can be folded into the ultimate parent
+                if (inChainContext && opName.StartsWith("Spool_Iterator", StringComparison.Ordinal))
+                    return true;
+
                 // AggregationSpool<*>, ProjectionSpool, Extend_Lookup (but not Cache)
                 var isSpool = (opName.Contains("Spool<") || opName.EndsWith("Spool", StringComparison.OrdinalIgnoreCase)) &&
                               !opName.StartsWith("Spool_Iterator", StringComparison.Ordinal) &&
@@ -2779,7 +2878,8 @@ namespace DaxStudio.UI.ViewModels
             }
 
             // Helper to recursively fold a child and its descendants into the ultimate parent
-            void FoldSpoolChainRecursively(EnrichedPlanNode ultimateParent, EnrichedPlanNode nodeToFold, string columnName)
+            // inChainContext indicates we're deeper in a fold chain, allowing Spool_Iterator to be folded
+            void FoldSpoolChainRecursively(EnrichedPlanNode ultimateParent, EnrichedPlanNode nodeToFold, string columnName, bool inChainContext = false)
             {
                 if (foldedNodeIds.Contains(nodeToFold.NodeId))
                     return;
@@ -2790,7 +2890,7 @@ namespace DaxStudio.UI.ViewModels
                     return;
 
                 var childOpName = GetOperatorNameFromString(nodeToFold.Operation);
-                if (!IsFoldableSpoolChild(childOpName))
+                if (!IsFoldableSpoolChild(childOpName, inChainContext))
                     return;
 
                 // Fold this node
@@ -2798,6 +2898,28 @@ namespace DaxStudio.UI.ViewModels
                 AddFoldedOp(ultimateParent.NodeId, nodeToFold.Operation);
                 if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Folding descendant {ChildId} ({ChildOp}) into {ParentId}",
                     nodeToFold.NodeId, childOpName, ultimateParent.NodeId);
+
+                // Track nested spool depth and row ranges for Spool_Iterator chains
+                var normalizedChildOp = NormalizeOperatorForGrouping(childOpName);
+                if (normalizedChildOp == "Spool_Iterator" || normalizedChildOp.StartsWith("Spool_Iterator<", StringComparison.Ordinal))
+                {
+                    var currentDepth = nestedSpoolDepths.TryGetValue(ultimateParent.NodeId, out var d) ? d : 1;
+                    nestedSpoolDepths[ultimateParent.NodeId] = currentDepth + 1;
+
+                    // Extract and track row range
+                    var childRecordsMatch = RecordsPattern.Match(nodeToFold.Operation ?? "");
+                    if (childRecordsMatch.Success && long.TryParse(childRecordsMatch.Groups[1].Value.Replace(",", ""), out var childRecords))
+                    {
+                        var currentMin = childRecords;
+                        var currentMax = childRecords;
+                        if (rowRanges.TryGetValue(ultimateParent.NodeId, out var currentRange))
+                        {
+                            currentMin = Math.Min(currentRange.min, childRecords);
+                            currentMax = Math.Max(currentRange.max, childRecords);
+                        }
+                        rowRanges[ultimateParent.NodeId] = (currentMin, currentMax);
+                    }
+                }
 
                 // Update spool type info
                 var simplifiedType = childOpName == "Extend_Lookup" ? "Extend" :
@@ -2807,11 +2929,11 @@ namespace DaxStudio.UI.ViewModels
                 if (childOpName != "Extend_Lookup" && childOpName != "Cache")
                     spoolTypeInfos[ultimateParent.NodeId] = spoolInfo;
 
-                // Recursively fold this node's children
+                // Recursively fold this node's children - now in chain context
                 var grandchildren = plan.AllNodes.Where(n => n.Parent?.NodeId == nodeToFold.NodeId).ToList();
                 foreach (var grandchild in grandchildren)
                 {
-                    FoldSpoolChainRecursively(ultimateParent, grandchild, columnName);
+                    FoldSpoolChainRecursively(ultimateParent, grandchild, columnName, inChainContext: true);
                 }
             }
 
@@ -2844,11 +2966,32 @@ namespace DaxStudio.UI.ViewModels
                             columnName = lookupColsMatch.Groups[1].Value;
                     }
 
-                    // Find direct children and recursively fold the chain
-                    var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId).ToList();
+                    // Initialize row range for the parent with its own records
+                    var parentRecordsMatch = RecordsPattern.Match(node.Operation ?? "");
+                    if (parentRecordsMatch.Success && long.TryParse(parentRecordsMatch.Groups[1].Value.Replace(",", ""), out var parentRecords))
+                    {
+                        rowRanges[node.NodeId] = (parentRecords, parentRecords);
+                    }
+
+                    // Find direct children and fold the chain
+                    // Helper types (AggregationSpool, Extend_Lookup) always fold
+                    // Spool_Iterator chains only fold if there's exactly 1 non-folded child (to preserve branching visibility)
+                    var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId && !foldedNodeIds.Contains(n.NodeId)).ToList();
+
+                    // Check if we should fold Spool_Iterator children based on branching
+                    var shouldFoldSpoolIteratorChain = children.Count == 1;
+
                     foreach (var child in children)
                     {
-                        FoldSpoolChainRecursively(node, child, columnName);
+                        var childOpNameInner = GetOperatorNameFromString(child.Operation);
+                        var normalizedChildOpInner = NormalizeOperatorForGrouping(childOpNameInner);
+                        var isChildSpoolIterator = normalizedChildOpInner == "Spool_Iterator" || normalizedChildOpInner.StartsWith("Spool_Iterator<", StringComparison.Ordinal);
+
+                        // Skip Spool_Iterator if there are multiple children (preserve branching)
+                        if (isChildSpoolIterator && !shouldFoldSpoolIteratorChain)
+                            continue;
+
+                        FoldSpoolChainRecursively(node, child, columnName, inChainContext: shouldFoldSpoolIteratorChain);
                     }
                 }
             }
@@ -3091,9 +3234,8 @@ namespace DaxStudio.UI.ViewModels
 
             // Pass 11: Group nested Spool_Iterator chains
             // Folds Spool_Iterator chains, tracking row ranges for heterogeneous records counts
-            var nestedSpoolDepths = new Dictionary<int, int>();
+            // Note: nestedSpoolDepths and rowRanges are declared in Pass 5 and shared with this pass
             var recordsPattern = new Regex(@"#Records=(\d+)", RegexOptions.Compiled);
-            var rowRanges = new Dictionary<int, (long min, long max)>(); // Track row ranges for folded chains
 
             // Helper function to find effective children (skipping folded nodes)
             List<EnrichedPlanNode> FindEffectiveChildren(EnrichedPlanNode node, HashSet<int> folded)
@@ -3298,6 +3440,7 @@ namespace DaxStudio.UI.ViewModels
             }
 
             // Pass 14: Fold Proxy operators into their single child
+            // Note: We allow root to be folded; the effective root is determined at tree finalization
             var collapsedProxyInfos = new Dictionary<int, List<string>>();
             do
             {
@@ -3305,10 +3448,6 @@ namespace DaxStudio.UI.ViewModels
                 foreach (var node in plan.AllNodes)
                 {
                     if (foldedNodeIds.Contains(node.NodeId))
-                        continue;
-
-                    // Never fold the root node - we need it to return a valid tree
-                    if (node.NodeId == plan.RootNode?.NodeId)
                         continue;
 
                     var opName = GetOperatorNameFromString(node.Operation);
@@ -3555,7 +3694,31 @@ namespace DaxStudio.UI.ViewModels
             }
 
             // Get the root node and set execution metrics
-            if (nodeMap.TryGetValue(plan.RootNode.NodeId, out var root))
+            // If the original root was folded (e.g., Variant or Proxy), find the effective root
+            PlanNodeViewModel root = null;
+            if (nodeMap.TryGetValue(plan.RootNode.NodeId, out root))
+            {
+                // Original root is not folded, use it
+            }
+            else
+            {
+                // Original root was folded - find effective root by traversing down through folded nodes
+                var currentNode = plan.RootNode;
+                while (currentNode != null && foldedNodeIds.Contains(currentNode.NodeId))
+                {
+                    // Find the first non-folded child
+                    var children = plan.AllNodes.Where(n => n.Parent?.NodeId == currentNode.NodeId).ToList();
+                    currentNode = children.FirstOrDefault(c => !foldedNodeIds.Contains(c.NodeId))
+                                  ?? children.FirstOrDefault(); // Keep traversing even through folded children
+                }
+                if (currentNode != null && nodeMap.TryGetValue(currentNode.NodeId, out root))
+                {
+                    if (VerboseBuildTreeLogging) Log.Debug(">>> BuildTree: Original root {OriginalId} was folded, using effective root {EffectiveId}",
+                        plan.RootNode.NodeId, currentNode.NodeId);
+                }
+            }
+
+            if (root != null)
             {
                 root.IsRootNode = true;
                 root.PlanTotalDurationMs = plan.TotalDurationMs;

@@ -1195,56 +1195,83 @@ namespace DaxStudio.UI.ViewModels
         }
 
         /// <summary>
-        /// Auto-collapses large subtrees from leaves upward to reduce initial visual complexity.
-        /// Starts from the deepest collapsible nodes and works toward the root,
-        /// stopping when the visible tree width is below the threshold.
+        /// Auto-collapses wide subtrees based on tree footprint (visible leaf count = horizontal grid positions).
+        /// Collapses from shallowest to deepest to reduce visual width quickly.
         /// </summary>
-        private void AutoCollapseSubtrees(PlanNodeViewModel root, int targetVisibleWidth = 15)
+        private void AutoCollapseSubtrees(PlanNodeViewModel root, int targetFootprint = 8)
         {
             if (root == null) return;
 
-            // If tree is already small enough, don't collapse anything
-            if (root.VisibleSubtreeWidth <= targetVisibleWidth)
+            // Calculate current tree footprint (visible leaf count = horizontal extent)
+            int currentFootprint = root.VisibleSubtreeWidth;
+
+            // If tree is already narrow enough, don't collapse anything
+            if (currentFootprint <= targetFootprint)
+            {
+                Log.Debug("AutoCollapseSubtrees: Tree already narrow enough (footprint={Footprint} <= target={Target})",
+                    currentFootprint, targetFootprint);
                 return;
+            }
 
             // Collect all nodes with their depths
             var nodesWithDepth = new List<(PlanNodeViewModel Node, int Depth)>();
             CollectNodesWithDepth(root, 0, nodesWithDepth);
 
-            // Filter to only collapsible nodes and sort by depth descending (deepest first)
+            // Filter to only collapsible nodes and sort by depth ascending (shallowest first)
+            // This collapses at higher levels first to reduce width more effectively
             var collapsibleNodes = nodesWithDepth
                 .Where(x => x.Node.CanToggleSubtree && !x.Node.IsSubtreeCollapsed)
-                .OrderByDescending(x => x.Depth)
-                .ThenByDescending(x => x.Node.SubtreeWidth) // Within same depth, collapse largest first
+                .OrderBy(x => x.Depth)  // Shallowest first for footprint reduction
+                .ThenByDescending(x => x.Node.VisibleSubtreeWidth) // Within same depth, collapse widest subtrees first
                 .Select(x => x.Node)
                 .ToList();
 
-            Log.Debug("AutoCollapseSubtrees: Found {Count} collapsible nodes, visible width = {Width}, total width = {TotalWidth}",
-                collapsibleNodes.Count, root.VisibleSubtreeWidth, root.SubtreeWidth);
+            Log.Debug("AutoCollapseSubtrees: Found {Count} collapsible nodes, footprint={Footprint}, target={Target}",
+                collapsibleNodes.Count, currentFootprint, targetFootprint);
 
-            // Collapse nodes from leaves upward until we're under the target width
+            // Collapse nodes iteratively, re-evaluating eligibility after each collapse
+            // This allows parent nodes to become eligible after their descendants are collapsed
             int collapsedCount = 0;
-            foreach (var node in collapsibleNodes)
+            int maxIterations = 100; // Safety limit
+
+            for (int iteration = 0; iteration < maxIterations && currentFootprint > targetFootprint; iteration++)
             {
-                // Skip if already collapsed (parent was collapsed)
-                if (node.IsSubtreeCollapsed)
-                    continue;
+                // Find the next best node to collapse (deepest eligible node with largest footprint)
+                var nextToCollapse = nodesWithDepth
+                    .Where(x => x.Node.CanToggleSubtree && !x.Node.IsSubtreeCollapsed)
+                    .OrderByDescending(x => x.Depth)  // Deepest first so parents become eligible
+                    .ThenByDescending(x => x.Node.VisibleSubtreeWidth)
+                    .Select(x => x.Node)
+                    .FirstOrDefault();
+
+                if (nextToCollapse == null)
+                {
+                    Log.Debug("AutoCollapseSubtrees: No more collapsible nodes, final footprint={Footprint}",
+                        currentFootprint);
+                    break;
+                }
 
                 // Collapse this node
-                node.IsSubtreeCollapsed = true;
+                nextToCollapse.IsSubtreeCollapsed = true;
                 collapsedCount++;
 
-                // Check if we've reached our target (VisibleSubtreeWidth recalculates dynamically)
-                if (root.VisibleSubtreeWidth <= targetVisibleWidth)
-                {
-                    Log.Debug("AutoCollapseSubtrees: Collapsed {Count} nodes, new visible width = {Width}",
-                        collapsedCount, root.VisibleSubtreeWidth);
-                    return;
-                }
+                // Recalculate tree footprint
+                currentFootprint = root.VisibleSubtreeWidth;
+
+                Log.Debug("AutoCollapseSubtrees: Collapsed node at depth {Depth}, new footprint={Footprint}",
+                    nodesWithDepth.First(x => x.Node == nextToCollapse).Depth, currentFootprint);
             }
 
-            Log.Debug("AutoCollapseSubtrees: Collapsed all {Count} collapsible nodes, final visible width = {Width}",
-                collapsedCount, root.VisibleSubtreeWidth);
+            if (currentFootprint <= targetFootprint)
+            {
+                Log.Debug("AutoCollapseSubtrees: Reached target after collapsing {Count} nodes, footprint={Footprint}",
+                    collapsedCount, currentFootprint);
+            }
+            else
+            {
+                Log.Debug("AutoCollapseSubtrees: Collapsed {Count} nodes but footprint={Footprint} still exceeds target={Target}",
+                    collapsedCount, currentFootprint, targetFootprint);
+            }
         }
 
         /// <summary>
@@ -1615,8 +1642,40 @@ namespace DaxStudio.UI.ViewModels
             // Notify UI that AllNodes has changed (single refresh notification)
             AllNodes.Refresh();
             NotifyOfPropertyChange(nameof(AllNodes));
+
+            // Recalculate content bounds now that AllNodes has all visible nodes
+            // (CalculateLayout was called earlier when AllNodes had the old set)
+            RecalculateContentBounds();
+
+            // Notify expand/collapse button states so toolbar buttons update
+            NotifyOfPropertyChange(nameof(HasCollapsedNodes));
+            NotifyOfPropertyChange(nameof(HasExpandedCollapsibleNodes));
+
             Log.Debug(">>> PERF Toggle: Total RefreshLayoutAfterToggle took {ElapsedMs}ms (removed {Removed}, added {Added})",
                 sw.ElapsedMilliseconds, nodesToRemove.Count, nodesToAdd.Count);
+        }
+
+        /// <summary>
+        /// Recalculates ActualContentWidth and ActualContentHeight based on current AllNodes positions.
+        /// Called after AllNodes is updated to ensure bounds include all visible nodes.
+        /// </summary>
+        private void RecalculateContentBounds()
+        {
+            const double paddingRight = 150;
+            const double paddingBottom = 150;
+
+            double maxX = 0;
+            double maxY = 0;
+            foreach (var node in AllNodes)
+            {
+                var nodeRight = node.X + node.Width;
+                var nodeBottom = node.Y + node.Height;
+                if (nodeRight > maxX) maxX = nodeRight;
+                if (nodeBottom > maxY) maxY = nodeBottom;
+            }
+
+            ActualContentWidth = maxX + paddingRight;
+            ActualContentHeight = maxY + paddingBottom;
         }
 
         // Cache for subtree width calculations during layout - cleared at start of each layout pass

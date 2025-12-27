@@ -51,6 +51,18 @@ namespace DaxStudio.UI.Model
         /// Large data size in SE operation (100MB+ warning, 1GB+ error).
         /// Indicates large data volumes flowing through the query.
         /// </summary>
-        ExcessiveDataSize
+        ExcessiveDataSize,
+
+        /// <summary>
+        /// CPU time significantly exceeds Duration, indicating unusual parallelism.
+        /// Could indicate measurement issues or unexpected threading behavior.
+        /// </summary>
+        UnusualParallelism,
+
+        /// <summary>
+        /// Significant difference between logical and physical plan row counts.
+        /// May indicate estimation errors or data skew.
+        /// </summary>
+        RowCountMismatch
     }
 }
