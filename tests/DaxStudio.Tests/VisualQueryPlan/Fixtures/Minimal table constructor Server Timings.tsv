@@ -1,0 +1,2 @@
+Line	Subclass	Duration	CPU	Par.	Rows	KB	Timeline	Query
+1	ExecutionMetrics	0	0					{ "timeStart": "2025-12-27T14:12:29.134Z", "timeEnd": "2025-12-27T14:12:29.147Z",  "durationMs": 14, "queryProcessingCpuTimeMs": 16, "totalCpuTimeMs": 16, "executionDelayMs": 4,  "approximatePeakMemConsumptionKB": 0,  "commandType": "Statement", "queryDialect": 3, "queryResultRows": 1 }

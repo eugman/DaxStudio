@@ -1,0 +1,29 @@
+﻿// AdventureWorks2019
+DEFINE
+	VAR __DS0Core = 
+		SUMMARIZECOLUMNS(
+			ROLLUPADDISSUBTOTAL(
+				ROLLUPGROUP('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber]), "IsGrandTotalRowTotal"
+			),
+			"SumLineTotal", CALCULATE(SUM('Sales SalesOrderDetail'[LineTotal]))
+		)
+
+	VAR __DS0PrimaryWindowed = 
+		TOPN(
+			502,
+			__DS0Core,
+			[IsGrandTotalRowTotal],
+			0,
+			'Production ProductCategory'[Name],
+			1,
+			'Sales SalesOrderHeader'[SalesOrderNumber],
+			1
+		)
+
+EVALUATE
+	__DS0PrimaryWindowed
+
+ORDER BY
+	[IsGrandTotalRowTotal] DESC,
+	'Production ProductCategory'[Name],
+	'Sales SalesOrderHeader'[SalesOrderNumber]
