@@ -1,0 +1,33 @@
+#!/bin/bash
+# Pre-push hook: Run tests before allowing push
+# Install: git config core.hooksPath .githooks
+
+echo "Running tests before push..."
+
+# Build the test project
+echo "Building tests..."
+"/c/Program Files/Microsoft Visual Studio/2022/Enterprise/MSBuild/Current/Bin/MSBuild.exe" \
+    tests/DaxStudio.Tests/DaxStudio.Tests.csproj \
+    -t:Build -p:Configuration=Debug -v:minimal -m
+
+if [ $? -ne 0 ]; then
+    echo "❌ Build failed. Push aborted."
+    exit 1
+fi
+
+# Run tests (excluding SSAS-dependent tests, same as CI)
+echo "Running tests..."
+FILTER="FullyQualifiedName!~TestModelName&FullyQualifiedName!~TestTables&FullyQualifiedName!~TestColumns&FullyQualifiedName!~TestMeasures&FullyQualifiedName!~SystemRuntimeComplierServicesUnsafeCheck&FullyQualifiedName!~SystemMemoryCheck"
+
+"/c/Program Files/Microsoft Visual Studio/2022/Enterprise/Common7/IDE/CommonExtensions/Microsoft/TestWindow/vstest.console.exe" \
+    src/bin/Debug/DaxStudio.Tests.dll \
+    --TestCaseFilter:"$FILTER" \
+    --logger:"console;verbosity=minimal"
+
+if [ $? -ne 0 ]; then
+    echo "❌ Tests failed. Push aborted."
+    exit 1
+fi
+
+echo "✅ All tests passed. Proceeding with push."
+exit 0
