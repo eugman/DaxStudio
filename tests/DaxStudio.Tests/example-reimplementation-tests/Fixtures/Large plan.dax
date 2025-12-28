@@ -1,0 +1,40 @@
+﻿DEFINE
+    MEASURE Sales[Sales Amount] =
+        SUMX ( Sales, Sales[Quantity] * Sales[Net Price] )
+    MEASURE Sales[Audio] =
+        CALCULATE (
+            [Sales Amount],
+            'Product Category'[Category] = "Audio",
+            DATESYTD ( 'Date'[Date] )
+        )
+    MEASURE Sales[TV and Video] =
+        CALCULATE (
+            [Sales Amount],
+            'Product Category'[Category] = "TV and Video",
+            DATESYTD ( 'Date'[Date] )
+        )
+    MEASURE Sales[Computers] =
+        CALCULATE (
+            [Sales Amount],
+            'Product Category'[Category] = "Computers",
+            DATESYTD ( 'Date'[Date] )
+        )
+    MEASURE Sales[Cell phones] =
+        CALCULATE (
+            [Sales Amount],
+            'Product Category'[Category] = "Cell phones",
+            DATESYTD ( 'Date'[Date] )
+        )
+    MEASURE Sales[Test] = [Audio] + [TV and Video]
+        + [Computers]
+        + [Cell phones]
+EVALUATE
+ROW (
+    "Test", SUMX (
+        Customer,
+        CALCULATE (
+            [Test],
+            LASTNONBLANK ( 'Date'[Date], [Sales Amount] )
+        )
+    )
+)

@@ -1,0 +1,17 @@
+Line	Records	Physical Query Plan
+1		CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(0, 1)('Customer'[CustomerKey], 'Date'[Date])
+2	500	    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(0)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=500
+3	500	        AggregationSpool<Last>: SpoolPhyOp #Records=500
+4		            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(0)('Date'[Date])
+5		                Filter: IterPhyOp LogOp=Filter IterCols(0, 1)('Customer'[CustomerKey], 'Date'[Date])
+6		                    Not: IterPhyOp LogOp=Not IterCols(0, 1)('Customer'[CustomerKey], 'Date'[Date])
+7		                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(0, 1)('Customer'[CustomerKey], 'Date'[Date])
+8	10000	                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0, 1)('Customer'[CustomerKey], 'Date'[Date]) #Records=10000
+9	10000	                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=10000
+10		                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+11		                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(0)('Date'[Date]) DateTime
+12	500	    Spool_UniqueHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) #Records=500
+13	500	        AggregationSpool<GroupBy>: SpoolPhyOp #Records=500
+14	500	            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(0, 1)('Customer'[CustomerKey], 'Date'[Date]) #Records=500
+15	500	                AggregationSpool<GroupBy>: SpoolPhyOp #Records=500
+16		                    Scan_Vertipaq: RelLogOp DependOnCols()() RequiredCols(0, 1)('Customer'[CustomerKey], 'Date'[Date]) #Records=500
