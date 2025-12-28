@@ -26,8 +26,11 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore src/DaxStudio.sln
 
-      - name: Build solution
-        run: msbuild src/DaxStudio.sln -p:Configuration=Debug -p:Platform="Any CPU" -m -verbosity:minimal
+      - name: Build Standalone
+        run: msbuild src/DaxStudio.Standalone/DaxStudio.Standalone.csproj -p:Configuration=Debug -m -verbosity:minimal
+
+      - name: Build Tests
+        run: msbuild tests/DaxStudio.Tests/DaxStudio.Tests.csproj -p:Configuration=Debug -m -verbosity:minimal
 
       - name: Run tests
         run: |
