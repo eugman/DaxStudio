@@ -34,14 +34,10 @@ jobs:
 
       - name: Run tests
         run: |
-          $vstest = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" -ErrorAction SilentlyContinue)
-          if ($vstest) {
-            & $vstest src/bin/Debug/DaxStudio.Tests.dll --logger:trx
-          } else {
-            Write-Host "VSTest not found, skipping tests"
-          }
+          # Exclude tests that require SSAS or have environment-specific dependencies
+          $filter = "FullyQualifiedName!~TestModelName&FullyQualifiedName!~TestTables&FullyQualifiedName!~TestColumns&FullyQualifiedName!~TestMeasures&FullyQualifiedName!~SystemRuntimeComplierServicesUnsafeCheck&FullyQualifiedName!~SystemMemoryCheck"
+          & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe" src/bin/Debug/DaxStudio.Tests.dll --TestCaseFilter:"$filter" --logger:trx
         shell: pwsh
-        continue-on-error: true  # Tests may require SSAS, don't fail build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
