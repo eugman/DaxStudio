@@ -1,0 +1,689 @@
+Line	Records	Physical Query Plan
+1		AddColumns: IterPhyOp LogOp=AddColumns IterCols(0)(''[Test])
+2		    SingletonTable: IterPhyOp LogOp=AddColumns
+3	1	    SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq Currency #Records=1 #KeyCols=247 #ValueCols=1 DominantValue=BLANK
+4	1	        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1
+5		            Cache: IterPhyOp #FieldCols=0 #ValueCols=1
+6		                Add: LookupPhyOp LogOp=Add LookupCols(1)('Customer'[CustomerKey]) Currency
+7		                    Add: LookupPhyOp LogOp=Add LookupCols(1)('Customer'[CustomerKey]) Currency
+8		                        Add: LookupPhyOp LogOp=Add LookupCols(1)('Customer'[CustomerKey]) Currency
+9	5647	                            SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq LookupCols(1)('Customer'[CustomerKey]) Currency #Records=5647 #KeyCols=247 #ValueCols=1 DominantValue=BLANK
+10	5647	                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=5647
+11		                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=1
+12	6255798	                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=6255798 #KeyCols=2 #ValueCols=0
+13	6255798	                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=6255798
+14		                                                DatesBetween: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+15		                                                    Extend_Lookup: IterPhyOp LogOp=TableToScalar IterCols(1)('Customer'[CustomerKey])
+16	18869	                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=247 #ValueCols=0
+17	18869	                                                            ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=18869
+18		                                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+19	18869	                                                        TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+20	18869	                                                            AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+21		                                                                StartOfYear: IterPhyOp LogOp=StartOfYear IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+22	18869	                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=LastDate IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+23	18869	                                                                        AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+24		                                                                            LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+25	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+26	18869	                                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+27	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+28	18869	                                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+29		                                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+30	18869	                                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+31	18869	                                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+32		                                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+33		                                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+34		                                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+35		                                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+36	1571378	                                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+37	1571378	                                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+38		                                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+39		                                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+40		                                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+41	18869	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+42	18869	                                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+43		                                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+44		                                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+45		                                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+46		                                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+47	1571378	                                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+48	1571378	                                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+49		                                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+50		                                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+51	18869	                                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+52	18869	                                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+53		                                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+54	18869	                                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+55	18869	                                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+56		                                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+57		                                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+58		                                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+59		                                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+60	1571378	                                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+61	1571378	                                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+62		                                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+63		                                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+64		                                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+65	18869	                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+66	18869	                                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+67		                                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+68		                                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+69		                                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+70		                                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+71	1571378	                                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+72	1571378	                                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+73		                                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+74		                                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+75		                                                                    LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+76	18869	                                                                        Spool_UniqueHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+77	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+78	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+79	18869	                                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+80		                                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+81	18869	                                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+82	18869	                                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+83		                                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+84		                                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+85		                                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+86		                                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+87	1571378	                                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+88	1571378	                                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+89		                                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+90		                                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+91		                                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+92	18869	                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+93	18869	                                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+94		                                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+95		                                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+96		                                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+97		                                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+98	1571378	                                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+99	1571378	                                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+100		                                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+101		                                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+102	18869	                                                                        Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+103	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+104		                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+105	18869	                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+106	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+107		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+108		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+109		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+110		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+111	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+112	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+113		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+114		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+115		                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+116	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+117	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+118		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+119		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+120		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+121		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+122	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+123	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+124		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+125		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+126	18869	                                                    TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+127	18869	                                                        AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+128		                                                            LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+129	18869	                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+130	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+131	18869	                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+132	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+133		                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+134	18869	                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+135	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+136		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+137		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+138		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+139		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+140	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+141	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+142		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+143		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+144		                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+145	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+146	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+147		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+148		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+149		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+150		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+151	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+152	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+153		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+154		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+155	18869	                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+156	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+157		                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+158	18869	                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+159	18869	                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+160		                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+161		                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+162		                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+163		                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+164	1571378	                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+165	1571378	                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+166		                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+167		                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+168		                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+169	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+170	18869	                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+171		                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+172		                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+173		                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+174		                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+175	1571378	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+176	1571378	                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+177		                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+178		                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+179	14073	                            SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq LookupCols(1)('Customer'[CustomerKey]) Currency #Records=14073 #KeyCols=247 #ValueCols=1 DominantValue=BLANK
+180	14073	                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=14073
+181		                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=1
+182	6255798	                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=6255798 #KeyCols=2 #ValueCols=0
+183	6255798	                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=6255798
+184		                                                DatesBetween: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+185		                                                    Extend_Lookup: IterPhyOp LogOp=TableToScalar IterCols(1)('Customer'[CustomerKey])
+186	18869	                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=247 #ValueCols=0
+187	18869	                                                            ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=18869
+188		                                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+189	18869	                                                        TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+190	18869	                                                            AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+191		                                                                StartOfYear: IterPhyOp LogOp=StartOfYear IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+192	18869	                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=LastDate IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+193	18869	                                                                        AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+194		                                                                            LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+195	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+196	18869	                                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+197	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+198	18869	                                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+199		                                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+200	18869	                                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+201	18869	                                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+202		                                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+203		                                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+204		                                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+205		                                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+206	1571378	                                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+207	1571378	                                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+208		                                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+209		                                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+210		                                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+211	18869	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+212	18869	                                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+213		                                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+214		                                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+215		                                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+216		                                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+217	1571378	                                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+218	1571378	                                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+219		                                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+220		                                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+221	18869	                                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+222	18869	                                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+223		                                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+224	18869	                                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+225	18869	                                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+226		                                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+227		                                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+228		                                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+229		                                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+230	1571378	                                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+231	1571378	                                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+232		                                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+233		                                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+234		                                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+235	18869	                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+236	18869	                                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+237		                                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+238		                                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+239		                                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+240		                                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+241	1571378	                                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+242	1571378	                                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+243		                                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+244		                                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+245		                                                                    LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+246	18869	                                                                        Spool_UniqueHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+247	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+248	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+249	18869	                                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+250		                                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+251	18869	                                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+252	18869	                                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+253		                                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+254		                                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+255		                                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+256		                                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+257	1571378	                                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+258	1571378	                                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+259		                                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+260		                                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+261		                                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+262	18869	                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+263	18869	                                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+264		                                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+265		                                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+266		                                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+267		                                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+268	1571378	                                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+269	1571378	                                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+270		                                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+271		                                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+272	18869	                                                                        Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+273	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+274		                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+275	18869	                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+276	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+277		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+278		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+279		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+280		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+281	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+282	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+283		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+284		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+285		                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+286	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+287	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+288		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+289		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+290		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+291		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+292	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+293	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+294		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+295		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+296	18869	                                                    TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+297	18869	                                                        AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+298		                                                            LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+299	18869	                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+300	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+301	18869	                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+302	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+303		                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+304	18869	                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+305	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+306		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+307		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+308		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+309		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+310	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+311	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+312		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+313		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+314		                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+315	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+316	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+317		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+318		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+319		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+320		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+321	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+322	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+323		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+324		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+325	18869	                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+326	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+327		                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+328	18869	                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+329	18869	                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+330		                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+331		                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+332		                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+333		                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+334	1571378	                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+335	1571378	                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+336		                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+337		                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+338		                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+339	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+340	18869	                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+341		                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+342		                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+343		                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+344		                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+345	1571378	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+346	1571378	                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+347		                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+348		                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+349	1570	                        SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq LookupCols(1)('Customer'[CustomerKey]) Currency #Records=1570 #KeyCols=247 #ValueCols=1 DominantValue=BLANK
+350	1570	                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1570
+351		                                Cache: IterPhyOp #FieldCols=1 #ValueCols=1
+352	6255798	                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=6255798 #KeyCols=2 #ValueCols=0
+353	6255798	                                        AggregationSpool<GroupBy>: SpoolPhyOp #Records=6255798
+354		                                            DatesBetween: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+355		                                                Extend_Lookup: IterPhyOp LogOp=TableToScalar IterCols(1)('Customer'[CustomerKey])
+356	18869	                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=247 #ValueCols=0
+357	18869	                                                        ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=18869
+358		                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+359	18869	                                                    TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+360	18869	                                                        AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+361		                                                            StartOfYear: IterPhyOp LogOp=StartOfYear IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+362	18869	                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=LastDate IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+363	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+364		                                                                        LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+365	18869	                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+366	18869	                                                                                AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+367	18869	                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+368	18869	                                                                                        AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+369		                                                                                            CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+370	18869	                                                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+371	18869	                                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+372		                                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+373		                                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+374		                                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+375		                                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+376	1571378	                                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+377	1571378	                                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+378		                                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+379		                                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+380		                                                                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+381	18869	                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+382	18869	                                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+383		                                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+384		                                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+385		                                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+386		                                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+387	1571378	                                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+388	1571378	                                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+389		                                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+390		                                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+391	18869	                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+392	18869	                                                                                AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+393		                                                                                    CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+394	18869	                                                                                        Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+395	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+396		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+397		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+398		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+399		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+400	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+401	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+402		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+403		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+404		                                                                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+405	18869	                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+406	18869	                                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+407		                                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+408		                                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+409		                                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+410		                                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+411	1571378	                                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+412	1571378	                                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+413		                                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+414		                                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+415		                                                                LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+416	18869	                                                                    Spool_UniqueHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+417	18869	                                                                        AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+418	18869	                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+419	18869	                                                                                AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+420		                                                                                    CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+421	18869	                                                                                        Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+422	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+423		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+424		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+425		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+426		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+427	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+428	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+429		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+430		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+431		                                                                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+432	18869	                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+433	18869	                                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+434		                                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+435		                                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+436		                                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+437		                                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+438	1571378	                                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+439	1571378	                                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+440		                                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+441		                                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+442	18869	                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+443	18869	                                                                        AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+444		                                                                            CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+445	18869	                                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+446	18869	                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+447		                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+448		                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+449		                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+450		                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+451	1571378	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+452	1571378	                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+453		                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+454		                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+455		                                                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+456	18869	                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+457	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+458		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+459		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+460		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+461		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+462	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+463	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+464		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+465		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+466	18869	                                                TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+467	18869	                                                    AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+468		                                                        LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+469	18869	                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+470	18869	                                                                AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+471	18869	                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+472	18869	                                                                        AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+473		                                                                            CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+474	18869	                                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+475	18869	                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+476		                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+477		                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+478		                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+479		                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+480	1571378	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+481	1571378	                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+482		                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+483		                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+484		                                                                                Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+485	18869	                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+486	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+487		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+488		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+489		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+490		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+491	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+492	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+493		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+494		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+495	18869	                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+496	18869	                                                                AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+497		                                                                    CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+498	18869	                                                                        Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+499	18869	                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+500		                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+501		                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+502		                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+503		                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+504	1571378	                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+505	1571378	                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+506		                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+507		                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+508		                                                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+509	18869	                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+510	18869	                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+511		                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+512		                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+513		                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+514		                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+515	1571378	                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+516	1571378	                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+517		                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+518		                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+519	1572	                    SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq LookupCols(1)('Customer'[CustomerKey]) Currency #Records=1572 #KeyCols=247 #ValueCols=1 DominantValue=BLANK
+520	1572	                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1572
+521		                            Cache: IterPhyOp #FieldCols=1 #ValueCols=1
+522	6255798	                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=6255798 #KeyCols=2 #ValueCols=0
+523	6255798	                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=6255798
+524		                                        DatesBetween: IterPhyOp LogOp=DatesBetween IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+525		                                            Extend_Lookup: IterPhyOp LogOp=TableToScalar IterCols(1)('Customer'[CustomerKey])
+526	18869	                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=247 #ValueCols=0
+527	18869	                                                    ProjectionSpool<ProjectFusion<>>: SpoolPhyOp #Records=18869
+528		                                                        Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+529	18869	                                                TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+530	18869	                                                    AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+531		                                                        StartOfYear: IterPhyOp LogOp=StartOfYear IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+532	18869	                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=LastDate IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+533	18869	                                                                AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+534		                                                                    LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+535	18869	                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+536	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+537	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+538	18869	                                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+539		                                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+540	18869	                                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+541	18869	                                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+542		                                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+543		                                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+544		                                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+545		                                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+546	1571378	                                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+547	1571378	                                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+548		                                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+549		                                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+550		                                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+551	18869	                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+552	18869	                                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+553		                                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+554		                                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+555		                                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+556		                                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+557	1571378	                                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+558	1571378	                                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+559		                                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+560		                                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+561	18869	                                                                        Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+562	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+563		                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+564	18869	                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+565	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+566		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+567		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+568		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+569		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+570	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+571	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+572		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+573		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+574		                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+575	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+576	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+577		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+578		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+579		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+580		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+581	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+582	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+583		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+584		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+585		                                                            LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+586	18869	                                                                Spool_UniqueHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+587	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+588	18869	                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+589	18869	                                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+590		                                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+591	18869	                                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+592	18869	                                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+593		                                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+594		                                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+595		                                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+596		                                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+597	1571378	                                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+598	1571378	                                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+599		                                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+600		                                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+601		                                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+602	18869	                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+603	18869	                                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+604		                                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+605		                                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+606		                                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+607		                                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+608	1571378	                                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+609	1571378	                                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+610		                                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+611		                                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+612	18869	                                                                Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+613	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+614		                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+615	18869	                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+616	18869	                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+617		                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+618		                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+619		                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+620		                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+621	1571378	                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+622	1571378	                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+623		                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+624		                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+625		                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+626	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+627	18869	                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+628		                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+629		                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+630		                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+631		                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+632	1571378	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+633	1571378	                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+634		                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+635		                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+636	18869	                                            TableToScalar: LookupPhyOp LogOp=TableToScalar LookupCols(1)('Customer'[CustomerKey]) DateTime #Records=18869
+637	18869	                                                AggregationSpool<TableToScalar>: SpoolPhyOp #Records=18869
+638		                                                    LastDate: IterPhyOp LogOp=LastDate IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+639	18869	                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=0
+640	18869	                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+641	18869	                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+642	18869	                                                                    AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+643		                                                                        CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+644	18869	                                                                            Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+645	18869	                                                                                AggregationSpool<Last>: SpoolPhyOp #Records=18869
+646		                                                                                    Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+647		                                                                                        Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+648		                                                                                            Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+649		                                                                                                ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+650	1571378	                                                                                                    Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+651	1571378	                                                                                                        ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+652		                                                                                                            Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+653		                                                                                        ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+654		                                                                            Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+655	18869	                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+656	18869	                                                                                    AggregationSpool<Last>: SpoolPhyOp #Records=18869
+657		                                                                                        Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+658		                                                                                            Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+659		                                                                                                Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+660		                                                                                                    ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+661	1571378	                                                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+662	1571378	                                                                                                            ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+663		                                                                                                                Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+664		                                                                                            ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+665	18869	                                                        Spool_MultiValuedHashLookup: IterPhyOp LogOp=Scan_Vertipaq LookupCols(1)('Customer'[CustomerKey]) IterCols(44)('Date'[Date]) #Records=18869 #KeyCols=2 #ValueCols=0
+666	18869	                                                            AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869
+667		                                                                CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[CustomerKey], 'Date'[Date])
+668	18869	                                                                    Spool_MultiValuedHashLookup: IterPhyOp LogOp=First LookupCols(42)('Date'[Date]) IterCols(1)('Customer'[CustomerKey]) #Records=18869 #KeyCols=1 #ValueCols=2
+669	18869	                                                                        AggregationSpool<Last>: SpoolPhyOp #Records=18869
+670		                                                                            Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+671		                                                                                Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+672		                                                                                    Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+673		                                                                                        ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+674	1571378	                                                                                            Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+675	1571378	                                                                                                ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+676		                                                                                                    Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+677		                                                                                ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime
+678		                                                                    Cache: IterPhyOp #FieldCols=1 #ValueCols=0
+679	18869	                                                                        Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=First IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=18869 #KeyCols=1 #ValueCols=2
+680	18869	                                                                            AggregationSpool<Last>: SpoolPhyOp #Records=18869
+681		                                                                                Extend_Lookup: IterPhyOp LogOp=Extend_Lookup'Date'[Date] IterCols(42)('Date'[Date])
+682		                                                                                    Filter: IterPhyOp LogOp=Filter IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+683		                                                                                        Not: IterPhyOp LogOp=Not IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+684		                                                                                            ISBLANK: IterPhyOp LogOp=ISBLANK IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date])
+685	1571378	                                                                                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(1, 42)('Customer'[CustomerKey], 'Date'[Date]) #Records=1571378 #KeyCols=247 #ValueCols=1
+686	1571378	                                                                                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1571378
+687		                                                                                                        Cache: IterPhyOp #FieldCols=2 #ValueCols=1
+688		                                                                                    ColValue<'Date'[Date]>: LookupPhyOp LogOp=ColValue<'Date'[Date]>'Date'[Date] LookupCols(42)('Date'[Date]) DateTime

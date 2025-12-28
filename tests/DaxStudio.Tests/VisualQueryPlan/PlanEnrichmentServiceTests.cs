@@ -1,0 +1,1034 @@
+using Caliburn.Micro;
+using DaxStudio.QueryTrace;
+using DaxStudio.UI.Model;
+using DaxStudio.UI.Services;
+using DaxStudio.UI.ViewModels;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace DaxStudio.Tests.VisualQueryPlan
+{
+    [TestClass]
+    public class PlanEnrichmentServiceTests
+    {
+        private PlanEnrichmentService _service;
+
+        [TestInitialize]
+        public void TestSetup()
+        {
+            _service = new PlanEnrichmentService();
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithValidData_ReturnsEnrichedPlan()
+        {
+            // Arrange
+            var rawPlan = CreateSamplePhysicalPlan();
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rawPlan,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test-activity-id");
+
+            // Assert
+            Assert.IsNotNull(result);
+            Assert.AreEqual("test-activity-id", result.ActivityID);
+            Assert.AreEqual(PlanType.Physical, result.PlanType);
+            Assert.AreEqual(PlanState.Enriched, result.State);
+            Assert.IsTrue(result.AllNodes.Count > 0);
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithNullPlan_ReturnsEmptyPlan()
+        {
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rawPlan: null,
+                timingEvents: null,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            Assert.IsNotNull(result);
+            Assert.AreEqual(0, result.NodeCount);
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_BuildsTreeStructure()
+        {
+            // Arrange
+            var rawPlan = CreateSamplePhysicalPlan();
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rawPlan,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            Assert.IsNotNull(result.RootNode);
+            Assert.AreEqual(0, result.RootNode.Level);
+            Assert.IsTrue(result.RootNode.Children.Count > 0);
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_DetectsIssues()
+        {
+            // Arrange
+            var rawPlan = CreatePlanWithExcessiveMaterialization();
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rawPlan,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            Assert.IsTrue(result.HasIssues);
+            Assert.IsTrue(result.Issues.Any(i => i.IssueType == IssueType.ExcessiveMaterialization));
+        }
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_WithValidData_ReturnsEnrichedPlan()
+        {
+            // Arrange
+            var rawPlan = CreateSampleLogicalPlan();
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rawPlan,
+                timingEvents: null,
+                columnResolver: null,
+                activityId: "test-logical");
+
+            // Assert
+            Assert.IsNotNull(result);
+            Assert.AreEqual("test-logical", result.ActivityID);
+            Assert.AreEqual(PlanType.Logical, result.PlanType);
+            Assert.AreEqual(PlanState.Enriched, result.State);
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_AssignsEngineTypes()
+        {
+            // Arrange
+            var rawPlan = CreateSamplePhysicalPlan();
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rawPlan,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var vertipaqNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("Scan_Vertipaq"));
+            Assert.IsNotNull(vertipaqNode);
+            Assert.AreEqual(EngineType.StorageEngine, vertipaqNode.EngineType);
+        }
+
+        private BindableCollection<PhysicalQueryPlanRow> CreateSamplePhysicalPlan()
+        {
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("AddColumns: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1)", 1);
+            rows.Add(row1);
+
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp DependOnCols()() #Records=1000", 2);
+            rows.Add(row2);
+
+            var row3 = new PhysicalQueryPlanRow();
+            row3.PrepareQueryPlanRow("\tSum_Vertipaq: ScaLogOp MeasureRef=[Total] #Records=100", 3);
+            rows.Add(row3);
+
+            return rows;
+        }
+
+        private BindableCollection<PhysicalQueryPlanRow> CreatePlanWithExcessiveMaterialization()
+        {
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("GroupSemijoin: IterPhyOp", 1);
+            rows.Add(row1);
+
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tSpool_Iterator: IterPhyOp #Records=1500000", 2);
+            rows.Add(row2);
+
+            return rows;
+        }
+
+        private BindableCollection<LogicalQueryPlanRow> CreateSampleLogicalPlan()
+        {
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+
+            var row1 = new LogicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("Order: RelLogOp DependOnCols()()", 1);
+            rows.Add(row1);
+
+            var row2 = new LogicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tFilter: RelLogOp DependOnCols()()", 2);
+            rows.Add(row2);
+
+            return rows;
+        }
+
+        #region Timing Correlation Tests
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithTimingEvents_CorrelatesData()
+        {
+            // Arrange
+            var rawPlan = CreatePlanWithScanNodes();
+            var timingEvents = CreateSampleTimingEvents();
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rawPlan,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("Scan_Vertipaq"));
+            Assert.IsNotNull(scanNode, "Should find Scan_Vertipaq node");
+            Assert.AreEqual(100, scanNode.DurationMs, "Duration should be correlated from timing event");
+            Assert.AreEqual(50, scanNode.CpuTimeMs, "CPU time should be correlated from timing event");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_ReconcilesRowCounts_WhenPlanShowsZero()
+        {
+            // Arrange - plan with 0 records, includes table reference for matching
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Customer'[FirstName]) #Records=0", 1);
+            rows.Add(row);
+
+            // Timing event with xmSQL that contains matching column reference
+            // The correlation logic matches by column overlap extracted from xmSQL
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    EstimatedRows = 3655,  // Server timing shows actual rows
+                    ObjectName = "Customer",
+                    Query = "SELECT 'Customer'[FirstName] FROM 'Customer'"  // Must have column reference
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(3655, scanNode.Records, "Records should be reconciled from timing event EstimatedRows");
+            Assert.AreEqual("ServerTiming", scanNode.RecordsSource, "RecordsSource should indicate data came from ServerTiming");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_CalculatesParallelism()
+        {
+            // Arrange - includes table reference for matching
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=1000", 1);
+            rows.Add(row);
+
+            // Timing event with xmSQL that contains matching column reference
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 160,           // Total duration
+                    NetParallelDuration = 10, // Net duration after parallelism
+                    CpuTime = 150,
+                    ObjectName = "Sales",
+                    Query = "SELECT 'Sales'[Amount] FROM 'Sales'"  // Must have column reference
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(160, scanNode.DurationMs);
+            Assert.AreEqual(10, scanNode.NetParallelDurationMs);
+            Assert.AreEqual(16, scanNode.Parallelism, "Parallelism should be Duration/NetParallelDuration = 160/10 = 16");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_MatchesMultipleTablesByName()
+        {
+            // Arrange - Plan with multiple Scan_Vertipaq nodes for different tables
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("AddColumns: RelLogOp", 1);
+            rows.Add(row1);
+
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(0)('Customer'[FirstName]) #Records=0", 2);
+            rows.Add(row2);
+
+            var row3 = new PhysicalQueryPlanRow();
+            row3.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(0)('Internet Sales'[Margin]) #Records=0", 3);
+            rows.Add(row3);
+
+            // Timing events with xmSQL containing matching column references
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent { Duration = 50, CpuTime = 25, EstimatedRows = 673, ObjectName = "Customer", Query = "SELECT 'Customer'[FirstName] FROM 'Customer'" },
+                new TraceStorageEngineEvent { Duration = 30, CpuTime = 15, EstimatedRows = 1, ObjectName = "Internet Sales", Query = "SELECT 'Internet Sales'[Margin] FROM 'Internet Sales'" }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var customerNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("'Customer'"));
+            var salesNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("'Internet Sales'"));
+
+            Assert.IsNotNull(customerNode, "Should find Customer scan node");
+            Assert.AreEqual(50, customerNode.DurationMs, "Customer node should get timing data");
+            Assert.AreEqual(673, customerNode.Records, "Customer node should get EstimatedRows");
+
+            Assert.IsNotNull(salesNode, "Should find Internet Sales scan node");
+            Assert.AreEqual(30, salesNode.DurationMs, "Internet Sales node should get timing data");
+            Assert.AreEqual(1, salesNode.Records, "Internet Sales node should get EstimatedRows");
+        }
+
+        #endregion
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithMissingObjectName_NoCorrelation()
+        {
+            // Arrange - timing event WITHOUT ObjectName should not match
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=0", 1);
+            rows.Add(row);
+
+            // Timing event missing ObjectName - cannot match
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    EstimatedRows = 5000,
+                    ObjectName = null,  // Missing ObjectName!
+                    Query = "SELECT..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert - node should NOT have timing data because ObjectName was missing
+            var scanNode = result.AllNodes.First();
+            Assert.IsNull(scanNode.DurationMs, "Duration should not be populated when ObjectName is missing");
+            Assert.IsNull(scanNode.CpuTimeMs, "CpuTime should not be populated when ObjectName is missing");
+            Assert.AreEqual(0, scanNode.Records, "Records should remain 0 when no timing match");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithMismatchedObjectName_NoCorrelation()
+        {
+            // Arrange - timing event with wrong ObjectName should not match
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=0", 1);
+            rows.Add(row);
+
+            // Timing event with wrong ObjectName
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    EstimatedRows = 5000,
+                    ObjectName = "Customer",  // Wrong table name!
+                    Query = "SELECT..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert - node should NOT have timing data because ObjectName didn't match
+            var scanNode = result.AllNodes.First();
+            Assert.IsNull(scanNode.DurationMs, "Duration should not be populated when ObjectName doesn't match");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_PopulatesXmSql()
+        {
+            // Arrange
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Product'[Color]) #Records=0", 1);
+            rows.Add(row);
+
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 25,
+                    ObjectName = "Product",
+                    Query = "SELECT 'Product'[Color] FROM 'Product' WHERE..."
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.IsNotNull(scanNode.XmSql, "XmSql should be populated from timing event");
+            Assert.IsTrue(scanNode.XmSql.Contains("Product"), "XmSql should contain the query text");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SetsStorageEngineQueryCount()
+        {
+            // Arrange
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Product'[Color])", 1);
+            rows.Add(row1);
+
+            // Subclass determines IsInternalEvent - VertiPaqScanInternal = internal, others = not internal
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent { Duration = 10, ObjectName = "Product", Subclass = DaxStudioTraceEventSubclass.VertiPaqScan },
+                new TraceStorageEngineEvent { Duration = 5, ObjectName = "Customer", Subclass = DaxStudioTraceEventSubclass.VertiPaqScan },
+                new TraceStorageEngineEvent { Duration = 3, ObjectName = "Internal", Subclass = DaxStudioTraceEventSubclass.VertiPaqScanInternal }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert - should count both user and internal events
+            Assert.AreEqual(3, result.StorageEngineQueryCount, "Should count all SE queries (user + internal)");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SetsCacheHitCount()
+        {
+            // Arrange
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Product'[Color])", 1);
+            rows.Add(row1);
+
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent { Duration = 10, ObjectName = "Product", Subclass = DaxStudioTraceEventSubclass.VertiPaqCacheExactMatch },
+                new TraceStorageEngineEvent { Duration = 5, ObjectName = "Customer", Subclass = DaxStudioTraceEventSubclass.VertiPaqScan }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            Assert.AreEqual(1, result.CacheHits, "Should count only cache hit events");
+            Assert.AreEqual(2, result.StorageEngineQueryCount, "Should count all SE queries");
+        }
+
+        #region Cross-Reference Tests
+
+        [TestMethod]
+        public void CrossReferenceLogicalWithPhysical_InfersEngineType()
+        {
+            // Arrange
+            var logicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Logical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Sum_Vertipaq: ScaLogOp",
+                        EngineType = EngineType.Unknown
+                    }
+                }
+            };
+
+            var physicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Physical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Sum_Vertipaq: PhyOp",
+                        EngineType = EngineType.StorageEngine,
+                        DurationMs = 100,
+                        Records = 500
+                    }
+                }
+            };
+
+            // Act
+            _service.CrossReferenceLogicalWithPhysical(logicalPlan, physicalPlan);
+
+            // Assert
+            var logicalNode = logicalPlan.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, logicalNode.EngineType, "Engine type should be inferred from physical plan");
+        }
+
+        [TestMethod]
+        public void CrossReferenceLogicalWithPhysical_InheritsTiming()
+        {
+            // Arrange
+            var logicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Logical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Scan_Vertipaq: RelLogOp",
+                        EngineType = EngineType.Unknown,
+                        DurationMs = null
+                    }
+                }
+            };
+
+            var physicalPlan = new EnrichedQueryPlan
+            {
+                PlanType = PlanType.Physical,
+                AllNodes = new List<EnrichedPlanNode>
+                {
+                    new EnrichedPlanNode
+                    {
+                        NodeId = 1,
+                        Operation = "Scan_Vertipaq: PhyOp",
+                        EngineType = EngineType.StorageEngine,
+                        DurationMs = 150,
+                        CpuTimeMs = 100,
+                        Parallelism = 8,
+                        XmSql = "SELECT FROM 'Sales'..."
+                    }
+                }
+            };
+
+            // Act
+            _service.CrossReferenceLogicalWithPhysical(logicalPlan, physicalPlan);
+
+            // Assert
+            var logicalNode = logicalPlan.AllNodes.First();
+            Assert.AreEqual(150, logicalNode.DurationMs, "Duration should be inherited from physical");
+            Assert.AreEqual(100, logicalNode.CpuTimeMs, "CPU time should be inherited");
+            Assert.AreEqual(8, logicalNode.Parallelism, "Parallelism should be inherited");
+            Assert.AreEqual("SELECT FROM 'Sales'...", logicalNode.XmSql, "xmSQL should be inherited");
+        }
+
+        #endregion
+
+        #region Logical Plan Correlation Tests
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_WithTimingEvents_CorrelatesXmSql()
+        {
+            // Arrange - logical plan with Scan_Vertipaq
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row1 = new LogicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("Sum_Vertipaq: ScaLogOp MeasureRef=[Total]", 1);
+            rows.Add(row1);
+
+            var row2 = new LogicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(106)('Internet Sales'[Sales Amount])", 2);
+            rows.Add(row2);
+
+            // Timing event with ObjectName for matching
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 75,
+                    CpuTime = 40,
+                    ObjectName = "Internet Sales",
+                    Query = "SELECT 'Internet Sales'[Sales Amount] FROM 'Internet Sales'"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-logical-correlation");
+
+            // Assert
+            var scanNode = result.AllNodes.FirstOrDefault(n => n.Operation.Contains("Scan_Vertipaq"));
+            Assert.IsNotNull(scanNode, "Should find Scan_Vertipaq node");
+            Assert.AreEqual(75, scanNode.DurationMs, "Duration should be correlated from timing event");
+            Assert.AreEqual(40, scanNode.CpuTimeMs, "CPU time should be correlated from timing event");
+            Assert.IsNotNull(scanNode.XmSql, "XmSql should be populated");
+            Assert.IsTrue(scanNode.XmSql.Contains("Internet Sales"), "XmSql should contain query text");
+        }
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_ScanVertipaq_GetsStorageEngineType()
+        {
+            // Arrange - logical plan with Scan_Vertipaq
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(1)('Customer'[Name])", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents: null,
+                columnResolver: null,
+                activityId: "test-engine-type");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, scanNode.EngineType,
+                "Scan_Vertipaq should be marked as Storage Engine");
+        }
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_SumVertipaq_GetsStorageEngineType()
+        {
+            // Arrange - logical plan with Sum_Vertipaq
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Sum_Vertipaq: ScaLogOp MeasureRef=[Total Sales]", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents: null,
+                columnResolver: null,
+                activityId: "test-engine-type");
+
+            // Assert
+            var sumNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, sumNode.EngineType,
+                "Sum_Vertipaq should be marked as Storage Engine");
+        }
+
+        #endregion
+
+        #region xmSQL Fallback Correlation Tests
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_WithEmptyObjectName_MatchesByXmSqlFromClause()
+        {
+            // Arrange - timing event with empty ObjectName but xmSQL with FROM clause
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Date'[Date])", 1);
+            rows.Add(row);
+
+            // Event with empty ObjectName but xmSQL containing FROM 'Date'
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 50,
+                    CpuTime = 25,
+                    ObjectName = null, // Empty ObjectName
+                    Query = "SELECT 'Date'[Date] FROM 'Date'"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-xmsql-fallback");
+
+            // Assert - should match by FROM clause extraction
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(50, scanNode.DurationMs, "Should match by xmSQL FROM clause when ObjectName is empty");
+            Assert.IsNotNull(scanNode.XmSql, "XmSql should be populated");
+        }
+
+        [TestMethod]
+        public async Task EnrichLogicalPlanAsync_WithMismatchedObjectName_MatchesByXmSqlFromClause()
+        {
+            // Arrange - timing event with different ObjectName but matching xmSQL FROM
+            var rows = new BindableCollection<LogicalQueryPlanRow>();
+            var row = new LogicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Internet Sales'[Amount])", 1);
+            rows.Add(row);
+
+            // Event with wrong ObjectName but correct xmSQL FROM clause
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 75,
+                    ObjectName = "SomeOtherTable", // Doesn't match
+                    Query = "SELECT 'Internet Sales'[Amount] FROM 'Internet Sales'"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichLogicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-xmsql-mismatch");
+
+            // Assert - should match by FROM clause as fallback
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(75, scanNode.DurationMs, "Should fallback to xmSQL FROM clause when ObjectName doesn't match");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_WithEmptyObjectName_MatchesByXmSqlFromClause()
+        {
+            // Arrange - physical plan with empty ObjectName timing event
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp RequiredCols(0)('Customer'[Name])", 1);
+            rows.Add(row);
+
+            var timingEvents = new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    ObjectName = "", // Empty string
+                    Query = "SET DC_KIND=\"AUTO\";\nSELECT 'Customer'[Name] FROM 'Customer';"
+                }
+            };
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents,
+                columnResolver: null,
+                activityId: "test-physical-xmsql-fallback");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(100, scanNode.DurationMs, "Physical plan should also use xmSQL FROM fallback");
+            Assert.IsNotNull(scanNode.XmSql);
+        }
+
+        #endregion
+
+        #region Engine Type Classification Tests
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SpoolIteratorWithLogOpVertipaq_ShouldBeFE()
+        {
+            // Arrange - Spool_Iterator with LogOp=Scan_Vertipaq should be FE, not SE
+            // The LogOp= is just a reference to the logical operator, but the physical operator itself is FE
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq IterCols(1)('Customer'[CustomerKey]) #Records=18869", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var spoolNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, spoolNode.EngineType,
+                "Spool_Iterator with LogOp=Scan_Vertipaq should be FE - the LogOp is just a reference to the logical operator");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_ScanVertipaq_ShouldBeSE()
+        {
+            // Arrange - Scan_Vertipaq as the primary operator (not in LogOp=) should be SE
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Scan_Vertipaq: RelLogOp DependOnCols()() RequiredCols(0)('Customer'[Name])", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var scanNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, scanNode.EngineType,
+                "Scan_Vertipaq as primary operator should be SE");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_VertipaqResult_ShouldBeSE()
+        {
+            // Arrange - VertipaqResult is the only SE physical operator with IterPhyOp suffix
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("VertipaqResult: IterPhyOp #Records=1000", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var resultNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, resultNode.EngineType,
+                "VertipaqResult is the only SE physical operator with IterPhyOp suffix");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_ProjectionSpoolWithIterPhyOp_ShouldBeFE()
+        {
+            // Arrange - ProjectionSpool is FE even though it might reference Vertipaq in LogOp
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=5647", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var spoolNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, spoolNode.EngineType,
+                "ProjectionSpool with SpoolPhyOp should be FE");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_AggregationSpoolWithSpoolPhyOp_ShouldBeFE()
+        {
+            // Arrange - AggregationSpool is FE
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("AggregationSpool<GroupBy>: SpoolPhyOp #Records=18869", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var aggNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, aggNode.EngineType,
+                "AggregationSpool with SpoolPhyOp should be FE");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_SpoolLookupWithLookupPhyOp_ShouldBeFE()
+        {
+            // Arrange - SpoolLookup with LookupPhyOp is FE even if LogOp references Vertipaq
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq Currency #Records=1 #KeyCols=247", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var lookupNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, lookupNode.EngineType,
+                "SpoolLookup with LookupPhyOp should be FE even if LogOp=Sum_Vertipaq");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_CrossApplyWithIterPhyOp_ShouldBeFE()
+        {
+            // Arrange - CrossApply is FE even if LogOp references Vertipaq
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("CrossApply: IterPhyOp LogOp=Scan_Vertipaq IterCols(1, 44)('Customer'[Key], 'Date'[Date])", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var crossApplyNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.FormulaEngine, crossApplyNode.EngineType,
+                "CrossApply with IterPhyOp should be FE even if LogOp=Scan_Vertipaq");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_CacheWithIterPhyOp_ShouldBeSE()
+        {
+            // Arrange - Cache operators are typically SE (they represent data caches)
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+            var row = new PhysicalQueryPlanRow();
+            row.PrepareQueryPlanRow("Cache: IterPhyOp #FieldCols=1 #ValueCols=1", 1);
+            rows.Add(row);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var cacheNode = result.AllNodes.First();
+            Assert.AreEqual(EngineType.StorageEngine, cacheNode.EngineType,
+                "Cache operators represent SE datacaches");
+        }
+
+        [TestMethod]
+        public async Task EnrichPhysicalPlanAsync_MixedPlan_CorrectlyClassifiesAllNodes()
+        {
+            // Arrange - Plan with a mix of SE and FE operators
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("AddColumns: IterPhyOp LogOp=AddColumns", 1);
+            rows.Add(row1);
+
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tSpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq #Records=1", 2);
+            rows.Add(row2);
+
+            var row3 = new PhysicalQueryPlanRow();
+            row3.PrepareQueryPlanRow("\t\tProjectionSpool<Copy>: SpoolPhyOp #Records=5647", 3);
+            rows.Add(row3);
+
+            var row4 = new PhysicalQueryPlanRow();
+            row4.PrepareQueryPlanRow("\t\t\tCache: IterPhyOp #FieldCols=1", 4);
+            rows.Add(row4);
+
+            var row5 = new PhysicalQueryPlanRow();
+            row5.PrepareQueryPlanRow("\t\t\t\tSpool_Iterator<SpoolIterator>: IterPhyOp LogOp=Scan_Vertipaq #Records=18869", 5);
+            rows.Add(row5);
+
+            // Act
+            var result = await _service.EnrichPhysicalPlanAsync(
+                rows,
+                timingEvents: new List<TraceStorageEngineEvent>(),
+                columnResolver: null,
+                activityId: "test");
+
+            // Assert
+            var addColumns = result.AllNodes.First(n => n.Operation.Contains("AddColumns"));
+            var spoolLookup = result.AllNodes.First(n => n.Operation.Contains("SpoolLookup"));
+            var projectionSpool = result.AllNodes.First(n => n.Operation.Contains("ProjectionSpool"));
+            var cache = result.AllNodes.First(n => n.Operation.StartsWith("Cache:"));
+            var spoolIterator = result.AllNodes.First(n => n.Operation.Contains("Spool_Iterator"));
+
+            Assert.AreEqual(EngineType.FormulaEngine, addColumns.EngineType, "AddColumns should be FE");
+            Assert.AreEqual(EngineType.FormulaEngine, spoolLookup.EngineType, "SpoolLookup should be FE");
+            Assert.AreEqual(EngineType.FormulaEngine, projectionSpool.EngineType, "ProjectionSpool should be FE");
+            Assert.AreEqual(EngineType.StorageEngine, cache.EngineType, "Cache should be SE");
+            Assert.AreEqual(EngineType.FormulaEngine, spoolIterator.EngineType, "Spool_Iterator with LogOp=Scan_Vertipaq should be FE");
+        }
+
+        #endregion
+
+        #region Helper Methods for New Tests
+
+        private BindableCollection<PhysicalQueryPlanRow> CreatePlanWithScanNodes()
+        {
+            var rows = new BindableCollection<PhysicalQueryPlanRow>();
+
+            var row1 = new PhysicalQueryPlanRow();
+            row1.PrepareQueryPlanRow("AddColumns: RelLogOp", 1);
+            rows.Add(row1);
+
+            // Include table reference for table-name matching
+            var row2 = new PhysicalQueryPlanRow();
+            row2.PrepareQueryPlanRow("\tScan_Vertipaq: RelLogOp RequiredCols(0)('Sales'[Amount]) #Records=0", 2);
+            rows.Add(row2);
+
+            return rows;
+        }
+
+        private List<TraceStorageEngineEvent> CreateSampleTimingEvents()
+        {
+            return new List<TraceStorageEngineEvent>
+            {
+                new TraceStorageEngineEvent
+                {
+                    Duration = 100,
+                    CpuTime = 50,
+                    NetParallelDuration = 25,
+                    EstimatedRows = 1000,
+                    EstimatedKBytes = 100,
+                    ObjectName = "Sales",  // Must match table name in operation
+                    Query = "SELECT * FROM 'Sales'..."
+                }
+            };
+        }
+
+        #endregion
+    }
+}

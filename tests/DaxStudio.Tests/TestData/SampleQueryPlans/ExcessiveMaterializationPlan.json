@@ -1,0 +1,4 @@
+{
+  "description": "Physical query plan with excessive materialization for testing issue detection",
+  "rawPlan": "GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1)\n\tSpool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1500000 #KeyCols=75 #ValueCols=1\n\t\tProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1500000\n\t\t\tCache: IterPhyOp #FieldCols=1 #ValueCols=1"
+}

@@ -1055,6 +1055,50 @@
     <GeometryDrawing Brush="#FF228ED6" Geometry="{StaticResource query_planGeometry6}" />
   </DrawingGroup>
   <DrawingImage x:Key="query_planDrawingImage" Drawing="{StaticResource query_planDrawingGroup}" />
+  <!-- Visual Query Plan Icon - graph/tree visualization -->
+  <Geometry x:Key="visual_query_planGeometry1">F1 M32,32z M0,0z M16,4 A3,3,0,1,1,16,10 A3,3,0,1,1,16,4z</Geometry>
+  <Geometry x:Key="visual_query_planGeometry2">F1 M32,32z M0,0z M6,14 A3,3,0,1,1,6,20 A3,3,0,1,1,6,14z</Geometry>
+  <Geometry x:Key="visual_query_planGeometry3">F1 M32,32z M0,0z M26,14 A3,3,0,1,1,26,20 A3,3,0,1,1,26,14z</Geometry>
+  <Geometry x:Key="visual_query_planGeometry4">F1 M32,32z M0,0z M6,24 A3,3,0,1,1,6,30 A3,3,0,1,1,6,24z</Geometry>
+  <Geometry x:Key="visual_query_planGeometry5">F1 M32,32z M0,0z M16,24 A3,3,0,1,1,16,30 A3,3,0,1,1,16,24z</Geometry>
+  <Geometry x:Key="visual_query_planGeometry6">F1 M32,32z M0,0z M26,24 A3,3,0,1,1,26,30 A3,3,0,1,1,26,24z</Geometry>
+  <Geometry x:Key="visual_query_planGeometry7">F1 M32,32z M0,0z M16,10 L6,14 M16,10 L26,14 M6,20 L6,24 M6,20 L16,24 M26,20 L16,24 M26,20 L26,24</Geometry>
+  <DrawingGroup x:Key="visual_query_planDrawingGroup" ClipGeometry="M0,0 V32 H32 V0 H0 Z">
+    <GeometryDrawing>
+      <GeometryDrawing.Geometry>
+        <PathGeometry>
+          <PathFigure StartPoint="16,10" IsClosed="False">
+            <LineSegment Point="6,14"/>
+          </PathFigure>
+          <PathFigure StartPoint="16,10" IsClosed="False">
+            <LineSegment Point="26,14"/>
+          </PathFigure>
+          <PathFigure StartPoint="6,20" IsClosed="False">
+            <LineSegment Point="6,24"/>
+          </PathFigure>
+          <PathFigure StartPoint="6,20" IsClosed="False">
+            <LineSegment Point="16,24"/>
+          </PathFigure>
+          <PathFigure StartPoint="26,20" IsClosed="False">
+            <LineSegment Point="16,24"/>
+          </PathFigure>
+          <PathFigure StartPoint="26,20" IsClosed="False">
+            <LineSegment Point="26,24"/>
+          </PathFigure>
+        </PathGeometry>
+      </GeometryDrawing.Geometry>
+      <GeometryDrawing.Pen>
+        <Pen Brush="#FF3A3A38" Thickness="1.5"/>
+      </GeometryDrawing.Pen>
+    </GeometryDrawing>
+    <GeometryDrawing Brush="#FF228ED6" Geometry="{StaticResource visual_query_planGeometry1}" />
+    <GeometryDrawing Brush="#FFC8C6C4" Geometry="{StaticResource visual_query_planGeometry2}" />
+    <GeometryDrawing Brush="#FFC8C6C4" Geometry="{StaticResource visual_query_planGeometry3}" />
+    <GeometryDrawing Brush="#FF228ED6" Geometry="{StaticResource visual_query_planGeometry4}" />
+    <GeometryDrawing Brush="#FF228ED6" Geometry="{StaticResource visual_query_planGeometry5}" />
+    <GeometryDrawing Brush="#FF228ED6" Geometry="{StaticResource visual_query_planGeometry6}" />
+  </DrawingGroup>
+  <DrawingImage x:Key="visual_query_planDrawingImage" Drawing="{StaticResource visual_query_planDrawingGroup}" />
   <Geometry x:Key="variableGeometry1">F1 M16,16z M0,0z M5.23,8.11L8,5 8.39,4.57 6.49,4.57 6.41,4.66 4.68,6.73 4.56,6.87 4.56,6.87A1,1,0,0,1,4.56,6.71L3.79,4.71 3.73,4.54 1.94,4.54 2.11,4.91 3.47,8 0.72,11 0.32,11.44 2.25,11.44 2.33,11.34 4,9.33 4.09,9.21A0.27,0.27,0,0,0,4.16,9.13L4.22,9.28 5.03,11.28 5.1,11.44 6.8,11.44 6.63,11.06z</Geometry>
   <Geometry x:Key="variableGeometry2">F1 M16,16z M0,0z M15.21,4.55L13.94,4.55 13.86,4.68 11.18,9.32 10.49,4.77 10.49,4.55 8.86,4.55 8.92,4.86 10.05,11.1 9.35,12.19A2.36,2.36,0,0,1,8.77,12.84A1.14,1.14,0,0,1,8.14,13.03L7.9,13 7.73,13 7.42,12.83 7.35,13.17 7.16,14.07 7.16,14.31 7.39,14.38A1.73,1.73,0,0,0,7.71,14.45L8.07,14.45A2.81,2.81,0,0,0,8.96,14.31A2.44,2.44,0,0,0,9.71,13.89A3.67,3.67,0,0,0,10.37,13.24A8.93,8.93,0,0,0,10.97,12.39L15.44,5 15.68,4.6z</Geometry>
   <DrawingGroup x:Key="variableDrawingGroup" ClipGeometry="M0,0 V16 H16 V0 H0 Z">
