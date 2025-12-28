@@ -1,0 +1,23 @@
+Line	Records	Physical Query Plan
+1		PartitionIntoGroups: IterPhyOp LogOp=Order IterCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[]) #Groups=1 #Rows=502
+2	1	    AggregationSpool<Order>: SpoolPhyOp #Records=1
+3		        Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[])
+4		            PartitionIntoGroups: IterPhyOp LogOp=TopN IterCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[]) #Groups=1 #Rows=502
+5	1	                AggregationSpool<Top>: SpoolPhyOp #Records=1
+6		                    Proxy: IterPhyOp LogOp=TableVarProxy IterCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[])
+7		                        Union: IterPhyOp LogOp=Union IterCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[])
+8		                            GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2, 3)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal])
+9	50419	                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq IterCols(0, 1)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber]) #Records=50419 #KeyCols=132 #ValueCols=1
+10	50419	                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=50419
+11		                                        DirectQueryResult : IterPhyOp #FieldCols=2 #ValueCols=1 Fields('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber])
+12		                            GroupSemijoin: IterPhyOp LogOp=GroupSemiJoin IterCols(0, 1, 2, 3)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal])
+13	1	                                Spool_Iterator<SpoolIterator>: IterPhyOp LogOp=Sum_Vertipaq #Records=1 #KeyCols=132 #ValueCols=1
+14	1	                                    ProjectionSpool<ProjectFusion<Copy>>: SpoolPhyOp #Records=1
+15		                                        DirectQueryResult : IterPhyOp #FieldCols=0 #ValueCols=1 Fields()
+16		                    ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue<''[IsGrandTotalRowTotal]>''[IsGrandTotalRowTotal] LookupCols(2)(''[IsGrandTotalRowTotal]) Boolean
+17		                    ColPosition<'Production ProductCategory'[Name]>: LookupPhyOp LogOp=ColPosition<'Production ProductCategory'[Name]>ColPosition<'Production ProductCategory'[Name]> LookupCols(0)('Production ProductCategory'[Name]) String
+18		                    ColValue<'Sales SalesOrderHeader'[SalesOrderNumber]>: LookupPhyOp LogOp=ColValue<'Sales SalesOrderHeader'[SalesOrderNumber]>'Sales SalesOrderHeader'[SalesOrderNumber] LookupCols(1)('Sales SalesOrderHeader'[SalesOrderNumber]) String
+19		                    Constant: LookupPhyOp LogOp=Constant Integer 502
+20		        ColValue<''[IsGrandTotalRowTotal]>: LookupPhyOp LogOp=ColValue<''[IsGrandTotalRowTotal]>''[IsGrandTotalRowTotal] LookupCols(2)(''[IsGrandTotalRowTotal]) Boolean
+21		        ColPosition<'Production ProductCategory'[Name]>: LookupPhyOp LogOp=ColPosition<'Production ProductCategory'[Name]>ColPosition<'Production ProductCategory'[Name]> LookupCols(0)('Production ProductCategory'[Name]) String
+22		        ColValue<'Sales SalesOrderHeader'[SalesOrderNumber]>: LookupPhyOp LogOp=ColValue<'Sales SalesOrderHeader'[SalesOrderNumber]>'Sales SalesOrderHeader'[SalesOrderNumber] LookupCols(1)('Sales SalesOrderHeader'[SalesOrderNumber]) String

@@ -1,0 +1,29 @@
+Line	Logical Query Plan
+1	__DS0Core: Union: RelLogOp VarName=__DS0Core DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[])
+2	    GroupSemiJoin: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal])
+3	        Scan_Vertipaq: RelLogOp DependOnCols()() 0-0 RequiredCols(0)('Production ProductCategory'[Name])
+4	        Scan_Vertipaq: RelLogOp DependOnCols()() 1-1 RequiredCols(1)('Sales SalesOrderHeader'[SalesOrderNumber])
+5	        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=false
+6	        Sum_Vertipaq: ScaLogOp DependOnCols(0, 1)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber]) Double DominantValue=BLANK
+7	            CalculateTable_Vertipaq: RelLogOp DependOnCols(0, 1)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber]) 3-41 RequiredCols(0, 1, 12)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], 'Sales SalesOrderDetail'[LineTotal])
+8	                Scan_Vertipaq: RelLogOp DependOnCols(0, 1)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber]) 3-41 RequiredCols(0, 1, 12)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], 'Sales SalesOrderDetail'[LineTotal])
+9	                TreatAs: RelLogOp DependOnCols(0)('Production ProductCategory'[Name]) 2-2 RequiredCols(0, 2)('Production ProductCategory'[Name], 'Sales SalesOrderDetail'[ProductID])
+10	                    Scan_Vertipaq: RelLogOp DependOnCols(0)('Production ProductCategory'[Name]) 2-2 RequiredCols(0, 2)('Production ProductCategory'[Name], 'Production Product'[ProductID])
+11	                    Scan_Vertipaq: RelLogOp DependOnCols()() 3-3 RequiredCols(3)('Sales SalesOrderDetail'[ProductID])
+12	            'Sales SalesOrderDetail'[LineTotal]: ScaLogOp DependOnCols(12)('Sales SalesOrderDetail'[LineTotal]) Double DominantValue=NONE
+13	    GroupSemiJoin: RelLogOp DependOnCols()() 0-3 RequiredCols(0, 1, 2, 3)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal])
+14	        Constant: ScaLogOp DependOnCols()() Boolean DominantValue=true
+15	        Sum_Vertipaq: ScaLogOp DependOnCols()() Double DominantValue=BLANK
+16	            Scan_Vertipaq: RelLogOp DependOnCols()() 0-38 RequiredCols(9)('Sales SalesOrderDetail'[LineTotal])
+17	            'Sales SalesOrderDetail'[LineTotal]: ScaLogOp DependOnCols(9)('Sales SalesOrderDetail'[LineTotal]) Double DominantValue=NONE
+18	__DS0PrimaryWindowed: TopN: RelLogOp VarName=__DS0PrimaryWindowed DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[])
+19	    TableVarProxy: RelLogOp DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[]) RefVarName=__DS0Core
+20	    Constant: ScaLogOp DependOnCols()() Integer DominantValue=502
+21	    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(2)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE
+22	    ColPosition<'Production ProductCategory'[Name]>: ScaLogOp DependOnCols(0)('Production ProductCategory'[Name]) String DominantValue=NONE
+23	    'Sales SalesOrderHeader'[SalesOrderNumber]: ScaLogOp DependOnCols(1)('Sales SalesOrderHeader'[SalesOrderNumber]) String DominantValue=NONE
+24	Order: RelLogOp DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[])
+25	    TableVarProxy: RelLogOp DependOnCols()() 0-4 RequiredCols(0, 1, 2, 3, 4)('Production ProductCategory'[Name], 'Sales SalesOrderHeader'[SalesOrderNumber], ''[IsGrandTotalRowTotal], ''[SumLineTotal], ''[]) RefVarName=__DS0PrimaryWindowed
+26	    ''[IsGrandTotalRowTotal]: ScaLogOp DependOnCols(2)(''[IsGrandTotalRowTotal]) Boolean DominantValue=NONE
+27	    ColPosition<'Production ProductCategory'[Name]>: ScaLogOp DependOnCols(0)('Production ProductCategory'[Name]) String DominantValue=NONE
+28	    'Sales SalesOrderHeader'[SalesOrderNumber]: ScaLogOp DependOnCols(1)('Sales SalesOrderHeader'[SalesOrderNumber]) String DominantValue=NONE
