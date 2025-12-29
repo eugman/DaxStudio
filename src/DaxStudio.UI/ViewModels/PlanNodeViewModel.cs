@@ -202,7 +202,7 @@ namespace DaxStudio.UI.ViewModels
         private string ExtractConstantValue()
         {
             var op = _node.Operation ?? string.Empty;
-            var match = Regex.Match(op, @"(?:Integer|Currency|Double|Decimal|Real)\s+(-?\d+\.?\d*)");
+            var match = ConstantValuePattern.Match(op);
             return match.Success ? match.Groups[1].Value : null;
         }
 
@@ -240,7 +240,7 @@ namespace DaxStudio.UI.ViewModels
         {
             var op = _node.Operation ?? string.Empty;
             // Pattern: ColValue<'Table'[Column]> or ColValue<''[Column]>
-            var match = Regex.Match(op, @"ColValue<('[^']*')?(\[[^\]]+\])>");
+            var match = ColValuePattern.Match(op);
             if (match.Success)
             {
                 return match.Groups[2].Value; // Return just [Column]
@@ -255,7 +255,7 @@ namespace DaxStudio.UI.ViewModels
         private string ExtractRefVarName()
         {
             var op = _node.Operation ?? string.Empty;
-            var match = Regex.Match(op, @"RefVarName=(\w+)");
+            var match = RefVarNamePattern.Match(op);
             if (match.Success)
             {
                 return match.Groups[1].Value;
@@ -293,7 +293,7 @@ namespace DaxStudio.UI.ViewModels
 
             // IterCols contains full column references like 'Table'[Col1], 'Table'[Col2]
             // Extract just the column names for brevity
-            var columnMatches = Regex.Matches(iterCols, @"'([^']+)'\[([^\]]+)\]");
+            var columnMatches = ColumnReferencePattern.Matches(iterCols);
             if (columnMatches.Count == 0)
                 return iterCols; // Return as-is if no matches
 
@@ -1053,18 +1053,18 @@ namespace DaxStudio.UI.ViewModels
                 var op = _node.Operation ?? string.Empty;
 
                 // Look for MeasureRef=[MeasureName] or MeasureRef='MeasureName' pattern
-                var match = Regex.Match(op, @"MeasureRef=['\[]([^'\]]+)['\]]", RegexOptions.IgnoreCase);
+                var match = MeasureRefPattern.Match(op);
                 if (match.Success)
                     return $"[{match.Groups[1].Value}]";
 
                 // Look for measure references in format (''[MeasureName]) - common in physical plans
-                match = Regex.Match(op, @"\(''\[([^\]]+)\]\)", RegexOptions.IgnoreCase);
+                match = PhysicalMeasureRefPattern.Match(op);
                 if (match.Success)
                     return $"[{match.Groups[1].Value}]";
 
                 // Look for aggregation operators (Sum, Count, Min, Max, etc.) with measure names
                 // Excludes Scan_Vertipaq which doesn't have measure names
-                match = Regex.Match(op, @"LogOp=(Sum|Count|Min|Max|Average|Avg)_Vertipaq\s+([A-Za-z]\w*)\b", RegexOptions.IgnoreCase);
+                match = AggregationMeasurePattern.Match(op);
                 if (match.Success)
                 {
                     var measureName = match.Groups[2].Value;
@@ -1198,7 +1198,8 @@ namespace DaxStudio.UI.ViewModels
         #region Query Plan Properties (Column Lists, BlankRow, Table ID)
 
         // Set to true to enable verbose BuildTree logging (causes significant performance overhead)
-        private const bool VerboseBuildTreeLogging = false;
+        // Note: Using static readonly instead of const to avoid CS0162 unreachable code warnings
+        private static readonly bool VerboseBuildTreeLogging = false;
 
         // Regex patterns for extracting column list properties
         // Format: PropertyName(indices)(columns) e.g., RequiredCols(0, 1)('T'[Col1], 'T'[Col2])
@@ -1237,6 +1238,47 @@ namespace DaxStudio.UI.ViewModels
         private static readonly Regex RecordsPattern = new Regex(
             @"#Records=([0-9,]+)",
             RegexOptions.Compiled);
+
+        // Common patterns used throughout the code - compiled for performance
+        private static readonly Regex ColumnReferencePattern = new Regex(
+            @"'([^']+)'\[([^\]]+)\]",
+            RegexOptions.Compiled);
+
+        private static readonly Regex SimpleColumnPattern = new Regex(
+            @"\[([^\]]+)\]",
+            RegexOptions.Compiled);
+
+        private static readonly Regex LogOpPattern = new Regex(
+            @"LogOp=(\w+)",
+            RegexOptions.Compiled);
+
+        private static readonly Regex DominantValuePattern = new Regex(
+            @"DominantValue=(\S+)",
+            RegexOptions.Compiled);
+
+        private static readonly Regex RefVarNamePattern = new Regex(
+            @"RefVarName=(\w+)",
+            RegexOptions.Compiled);
+
+        private static readonly Regex MeasureRefPattern = new Regex(
+            @"MeasureRef=['\[]([^'\]]+)['\]]",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private static readonly Regex ConstantValuePattern = new Regex(
+            @"(?:Integer|Currency|Double|Decimal|Real)\s+(-?\d+\.?\d*)",
+            RegexOptions.Compiled);
+
+        private static readonly Regex ColValuePattern = new Regex(
+            @"ColValue<('[^']*')?(\[[^\]]+\])>",
+            RegexOptions.Compiled);
+
+        private static readonly Regex PhysicalMeasureRefPattern = new Regex(
+            @"\(''\[([^\]]+)\]\)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private static readonly Regex AggregationMeasurePattern = new Regex(
+            @"LogOp=(Sum|Count|Min|Max|Average|Avg)_Vertipaq\s+([A-Za-z]\w*)\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
         /// Extracts column list from a regex match.
@@ -2626,7 +2668,7 @@ namespace DaxStudio.UI.ViewModels
                     continue;
 
                 // Check for LogOp=<comparison> pattern
-                var logOpMatch = Regex.Match(node.Operation ?? "", @"LogOp=(\w+)");
+                var logOpMatch = LogOpPattern.Match(node.Operation ?? "");
                 if (logOpMatch.Success)
                 {
                     var logOp = logOpMatch.Groups[1].Value;
@@ -3104,7 +3146,7 @@ namespace DaxStudio.UI.ViewModels
                     {
                         var columnsStr = match.Groups[1].Value;
                         // Format nicely: extract just column names for display
-                        var columnMatches = Regex.Matches(columnsStr, @"'([^']+)'\[([^\]]+)\]");
+                        var columnMatches = ColumnReferencePattern.Matches(columnsStr);
                         if (columnMatches.Count == 1)
                         {
                             // Single column: show full reference
@@ -3128,7 +3170,7 @@ namespace DaxStudio.UI.ViewModels
                     {
                         var columnsStr = match.Groups[1].Value;
                         // Format nicely: extract just column names for display
-                        var columnMatches = Regex.Matches(columnsStr, @"'([^']+)'\[([^\]]+)\]");
+                        var columnMatches = ColumnReferencePattern.Matches(columnsStr);
                         if (columnMatches.Count == 1)
                         {
                             // Single column: show full reference
@@ -4048,7 +4090,7 @@ namespace DaxStudio.UI.ViewModels
                 }
 
                 // Check for LogOp=<comparison> pattern in Physical Plan (e.g., "Extend_Lookup: IterPhyOp LogOp=GreaterThan...")
-                var logOpMatch = Regex.Match(child.Operation ?? "", @"LogOp=(\w+)");
+                var logOpMatch = LogOpPattern.Match(child.Operation ?? "");
                 if (logOpMatch.Success)
                 {
                     var logOp = logOpMatch.Groups[1].Value;
