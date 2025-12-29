@@ -1,0 +1,88 @@
+name: Validate Reimplementation Spec
+
+# Validates that the Visual Query Plan reimplementation guide stays in sync with code changes
+# Uses Claude Max subscription via OAuth (no API costs)
+#
+# NOTE: OAuth tokens expire in ~1 day. If workflow fails with auth errors, refresh your token:
+# 1. Run `claude /logout` then `claude` to re-authenticate
+# 2. Copy the new token and update CLAUDE_CODE_OAUTH_TOKEN secret
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      # Trigger when Visual Query Plan implementation changes
+      - "src/DaxStudio.UI/ViewModels/PlanNodeViewModel.cs"
+      - "src/DaxStudio.UI/ViewModels/VisualQueryPlanViewModel.cs"
+      - "src/DaxStudio.UI/Services/PlanEnrichmentService.cs"
+      - "src/DaxStudio.UI/Services/PerformanceIssueDetector.cs"
+      - "src/DaxStudio.UI/Model/EnrichedPlanNode.cs"
+      - "src/DaxStudio.UI/Model/EnrichedQueryPlan.cs"
+      - "src/DaxStudio.UI/Model/DaxOperatorDictionary.cs"
+      - "src/DaxStudio.UI/Views/VisualQueryPlanView.xaml"
+      - "tests/DaxStudio.Tests/VisualQueryPlan/**"
+
+  # Allow manual trigger for ad-hoc validation
+  workflow_dispatch:
+
+jobs:
+  validate-spec:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Validate Reimplementation Spec
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          timeout_minutes: 30
+          prompt: |
+            ## Task: Validate Visual Query Plan Reimplementation Spec
+
+            PR #${{ github.event.pull_request.number }} in ${{ github.repository }} modifies Visual Query Plan code.
+
+            **Your job**: Check if the reimplementation guide is still accurate after these changes.
+
+            ### Step 1: Read the spec and changed files
+            - Read `docs/VISUAL_QUERY_PLAN_REIMPLEMENTATION_GUIDE.md`
+            - Read `docs/VISUAL_QUERY_PLAN_REFERENCE.md`
+            - Read the files changed in this PR
+
+            ### Step 2: Check for spec drift
+            Look for these inconsistencies:
+
+            1. **New operators** added to `DaxOperatorDictionary.cs` but not documented
+            2. **Folding passes** modified in `PlanNodeViewModel.cs` (look for `// Pass N:` comments)
+            3. **New properties** added to `EnrichedPlanNode.cs` not in spec
+            4. **Test patterns** changed that the phased test guide should reflect
+            5. **New fixtures** added to `tests/DaxStudio.Tests/VisualQueryPlan/Fixtures/`
+
+            ### Step 3: Take action based on findings
+
+            **If spec is VALID** (no updates needed):
+            - Add a PR comment: "✅ Reimplementation spec validated - no updates needed"
+
+            **If spec needs MINOR UPDATES** (new operators, properties, etc.):
+            - Edit the relevant doc files directly
+            - Commit with message: "docs: Update reimplementation spec for PR #${{ github.event.pull_request.number }}"
+            - Add PR comment summarizing what was updated
+
+            **If MAJOR CHANGES found** (architectural shifts, new phases needed):
+            - Do NOT auto-commit
+            - Create a GitHub issue titled: "Spec Review Needed: [brief summary]"
+            - Add PR comment linking to the issue and explaining why human review is needed
+
+            ### Guidelines
+            - Be conservative: only update docs for clear, factual changes
+            - Don't rewrite prose style, just add missing technical content
+            - Preserve the existing document structure
+            - Add new operators alphabetically where lists exist

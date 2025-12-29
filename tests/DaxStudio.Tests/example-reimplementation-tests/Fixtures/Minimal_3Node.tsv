@@ -1,4 +1,0 @@
-Line	Records	Physical Query Plan
-1		AddColumns: IterPhyOp LogOp=AddColumns IterCols(0)(''[Result])
-2		    Scan_Vertipaq: RelLogOp DependOnCols()() RequiredCols(0, 1)('Sales'[Amount], 'Sales'[Qty]) #Records=1000
-3	1000	    SpoolLookup: LookupPhyOp LogOp=Sum_Vertipaq LookupCols(0)('Sales'[Amount]) Currency #Records=1000

@@ -523,25 +523,27 @@ This is the most complex part of the implementation. Raw query plans contain man
 
 ### Step 4.1: Understand the Multi-Pass Architecture
 
-The folding algorithm uses 15+ sequential passes. Each pass identifies and processes a specific pattern:
+The folding algorithm uses 15 sequential passes. Each pass identifies and processes a specific pattern. **Order matters** - some passes depend on earlier passes having completed.
 
-| Pass | Name | What it Does |
-|------|------|--------------|
-| 1 | Column Reference | Folds `'Table'[Column]: ScaLogOp` nodes |
-| 2 | Filter Predicate | Collects comparison nodes under Filter |
-| 3 | Physical Comparison | Handles `LogOp=GreaterThan` patterns |
-| 4 | Unary Predicates | Folds ISBLANK, NOT chains |
-| 5 | Spool Children | Folds AggregationSpool into Spool_Iterator |
-| 6 | Arithmetic Chains | Collapses Add→Add→Add to "Add (3x)" |
-| 7 | SingletonTable | Always folds into parent |
-| 8 | Column Info | Extracts RequiredCols for Scan_Vertipaq |
-| 9 | Identical Children | Folds child with identical operation |
-| 10 | Cache Column | Infers Cache column from ancestor IterCols |
-| 11 | Nested Spool | Chains Spool_Iterator→Spool_Iterator |
-| 12 | Type Coercion | Folds Variant→* wrappers |
-| 13 | SpoolLookup+Iterator | Folds with row range tracking |
-| 14 | Proxy Operators | Folds Proxy nodes into children |
-| 15 | TableToScalar | Folds with spool children |
+| Pass | Name | Pattern | Action | Example |
+|------|------|---------|--------|---------|
+| 1 | Column Reference | `'Table'[Column]: ScaLogOp` | Fold into parent | `'Sales'[Amount]: ScaLogOp` -> hidden |
+| 2 | Filter Predicate | Filter + GreaterThan/LessThan/etc. | Build predicate, fold comparison tree | `Filter: [Amount] > 100` |
+| 3 | Physical Comparison | `LogOp=GreaterThan` in operation | Extract logical comparison | Physical plan encoding |
+| 4 | Unary Predicates | Filter → Not → ISBLANK | Build `NOT ISBLANK([Col])` | ISBLANK/ISERROR chains |
+| 5 | Spool Children | Spool_Iterator + AggregationSpool | Fold spool, keep type info | `[Sum]`, `[GroupBy]` |
+| 6 | Arithmetic Chains | Add → Add → Add | Collapse to `Add (3x)` | Long math expressions |
+| 7 | SingletonTable | `SingletonTable` anywhere | Always fold | Scalar context wrapper |
+| 8 | Column Info | Scan_Vertipaq, DirectQueryResult | Extract RequiredCols/DependOnCols | Column info for display |
+| 9 | Identical Children | Parent.Operation == Child.Operation | Fold duplicate | Redundant wrappers |
+| 10 | Cache Column | Cache without column info | Inherit from ancestor IterCols | Spool context lookup |
+| 11 | Nested Spool | Spool_Iterator chains | Track row ranges, fold | `[100-1000 rows]` |
+| 12 | Type Coercion | `Variant->Decimal` etc. | Fold into child | Type conversion wrappers |
+| 13 | SpoolLookup+Iterator | SpoolLookup + Spool_Iterator | Fold with row range | Lookup backing spool |
+| 14 | Proxy Operators | TableVarProxy, Proxy | Fold into child, extract VAR name | `(VAR: __var1)` |
+| 15 | TableToScalar | TableToScalar + AggregationSpool | Fold, transfer #Records | Records to data source |
+
+**Critical Rule**: Never fold across engine boundaries (SE ↔ FE). Check `EngineType` before every fold decision.
 
 ### Step 4.2: Implement Pass 1 - Column Reference Folding
 
@@ -1451,6 +1453,97 @@ public Brush BackgroundBrush => EngineType switch
 
 ---
 
+## Appendix: Performance Considerations
+
+### Regex Compilation
+
+**Always use `RegexOptions.Compiled`** for patterns used during tree building:
+
+```csharp
+// GOOD - compiled once, fast on every call
+private static readonly Regex RecordsPattern = new Regex(
+    @"#Records=([0-9,]+)", RegexOptions.Compiled);
+
+// BAD - recompiles every call, ~10x slower
+var match = Regex.Match(operation, @"#Records=([0-9,]+)");
+```
+
+**Why**: The folding algorithm processes every node multiple times across 15 passes. Uncompiled regex adds ~100ms+ overhead on large plans (200+ nodes).
+
+### Avoid O(n²) Patterns
+
+**Problem**: Scanning the node list repeatedly to find relationships creates O(n²) performance.
+
+```csharp
+// BAD - O(n²): Scans all nodes for every node
+foreach (var node in plan.AllNodes)
+{
+    var children = plan.AllNodes.Where(n => n.Parent?.NodeId == node.NodeId).ToList();
+}
+
+// GOOD - O(n): Build lookup once, use many times
+var childrenByParent = plan.AllNodes
+    .Where(n => n.Parent != null)
+    .GroupBy(n => n.Parent.NodeId)
+    .ToDictionary(g => g.Key, g => g.ToList());
+
+foreach (var node in plan.AllNodes)
+{
+    var children = childrenByParent.GetValueOrDefault(node.NodeId, new List<EnrichedPlanNode>());
+}
+```
+
+**Apply this pattern to**:
+- `foldedNodeIds` - use `HashSet<int>` not `List<int>.Contains()`
+- Parent/child lookups - use `Dictionary<int, List<Node>>`
+- Spool type info, filter predicates, chain counts - all use `Dictionary<int, T>`
+
+### Cache Computed Values
+
+**SubtreeWidth** is called repeatedly during layout. Cache it:
+
+```csharp
+private int? _cachedSubtreeWidth;
+
+public int SubtreeWidth
+{
+    get
+    {
+        if (!_cachedSubtreeWidth.HasValue)
+            _cachedSubtreeWidth = CalculateSubtreeWidth();
+        return _cachedSubtreeWidth.Value;
+    }
+}
+
+public void InvalidateSubtreeWidth()
+{
+    _cachedSubtreeWidth = null;
+    Parent?.InvalidateSubtreeWidth();  // Propagate up
+}
+```
+
+### Animation Suspension
+
+During bulk operations (ExpandAll, CollapseAll), suspend animations:
+
+```csharp
+try
+{
+    CanvasPositionAnimation.SuspendAnimations = true;
+    foreach (var node in GetAllNodes())
+        node.IsSubtreeCollapsed = false;
+    ApplyLayout();
+}
+finally
+{
+    CanvasPositionAnimation.SuspendAnimations = false;
+}
+```
+
+**Why**: Animating 200+ nodes simultaneously causes UI jank. Suspend during bulk changes, then do a single layout.
+
+---
+
 ## Appendix: Key Algorithms
 
 ### A.1: Display Text Generation
@@ -1557,11 +1650,32 @@ For text on gray background (#F3F2F1):
 
 ### Row Count Severity Colors
 
-| Severity | Row Count | Color | Hex |
-|----------|-----------|-------|-----|
-| Fine | < 100K | Dark gray | #505050 |
-| Warning | 100K - 1M | Muted orange | #C87800 |
-| Critical | > 1M | Muted red | #B42828 |
+Only apply severity coloring to **Spool operations** (Formula Engine materialization). Storage Engine scans are optimized and don't need warnings.
+
+| Severity | Row Count | Color | Hex | Apply To |
+|----------|-----------|-------|-----|----------|
+| Fine | < 100K | Dark gray | #505050 | Spools only |
+| Warning | 100K - 1M | Muted orange | #C87800 | Spools only |
+| Critical | > 1M | Muted red | #B42828 | Spools only |
+
+```csharp
+public string RowCountSeverity
+{
+    get
+    {
+        if (!Records.HasValue) return "None";
+
+        // Only flag Spool operations (FE materialization)
+        var isSpool = OperatorName.Contains("Spool") || OperatorName == "Cache";
+        if (!isSpool) return "Fine";  // SE scans are optimized
+
+        var records = Records.Value;
+        if (records < 100_000) return "Fine";
+        if (records < 1_000_000) return "Warning";
+        return "Critical";
+    }
+}
+```
 
 ### Data Size Severity Colors
 
@@ -1570,6 +1684,31 @@ For text on gray background (#F3F2F1):
 | Fine | < 100MB | Dark gray | #505050 |
 | Warning | 100MB - 1GB | Muted orange | #C87800 |
 | Critical | > 1GB | Muted red | #B42828 |
+
+### Records Source Tracking
+
+Track where `#Records` value came from for transparency in the UI:
+
+| Source | Meaning | Display Style |
+|--------|---------|---------------|
+| `Plan` | Extracted from plan text `#Records=N` | Normal |
+| `ServerTiming` | From Server Timing trace events | Normal |
+| `Physical` | Inferred from physical plan (approximate) | Italic, prefix with "~" |
+| `Inherited` | Inherited from parent/child node | Italic, prefix with "~" |
+
+```csharp
+public string RecordsSource { get; set; } = "Plan";
+
+public string RecordsDisplay =>
+    Records.HasValue
+        ? (RecordsSource is "Physical" or "Inherited" ? "~" : "") + $"{Records.Value:N0}"
+        : "";
+
+public FontStyle RecordsFontStyle =>
+    RecordsSource is "Physical" or "Inherited"
+        ? FontStyles.Italic
+        : FontStyles.Normal;
+```
 
 ---
 
@@ -1594,4 +1733,5 @@ Key architectural principles:
 ---
 
 *Document created: 2025-12-27*
+*Last updated: 2025-12-28*
 *Based on DaxStudio Visual Query Plan implementation (branch: 001-visual-query-plan)*
